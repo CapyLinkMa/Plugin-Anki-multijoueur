@@ -7,7 +7,7 @@
   let S = window.MJ_BOOT || {};
   let tab = 'groupe';
   let draftAvatar = null;
-  let sortBy = 'pct';
+  let sortBy = 'points';
   let showLogin = false;
 
   // ---------------------------------------------------------------- bridge
@@ -63,14 +63,14 @@
   // ---------------------------------------------------------------- screens
   function render() {
     const app = $('#app');
-    const err = S.error ? `<div class="err">⚠️ ${esc(S.error)}</div>` : '';
+    const err = (S.error ? `<div class="err">⚠️ ${esc(S.error)}</div>` : '') + updateBanner();
     if (!S.profile) { app.innerHTML = header() + err + profileForm(true) + loginCard(); bindProfile(); bindAccount(); return; }
     if (!S.group) { app.innerHTML = header() + err + groupChoice(); bindGroup(); return; }
     const tabs = [['groupe', '🏆 Groupe'], ['activite', '💬 Activité'], ['stats', '📊 Stats'], ['profil', '👤 Profil']];
     const body = { groupe: screenGroup, activite: screenFeed, stats: screenStats, profil: screenProfile }[tab]();
     app.innerHTML = header() + err + `<div class="tabs">${tabs.map(([id, l]) => `<button class="tab ${tab === id ? 'active' : ''}" data-tab="${id}">${l}</button>`).join('')}</div>` + body;
     app.querySelectorAll('[data-tab]').forEach((b) => { b.onclick = () => { tab = b.dataset.tab; render(); }; });
-    ({ groupe: bindSort, activite: bindFeed, stats: () => {}, profil: () => { bindProfile(); bindLeave(); bindAccount(); } })[tab]();
+    ({ groupe: bindSort, activite: bindFeed, stats: bindCommon, profil: () => { bindProfile(); bindLeave(); bindAccount(); } })[tab]();
   }
 
   function header() {
@@ -89,8 +89,8 @@
       <div class="row"><label>Pseudo</label><input id="pf-pseudo" maxlength="24" value="${esc(p.pseudo || '')}" placeholder="Ton pseudo"></div>
       <div class="row"><label>Avatar</label><div class="avatars">${S.avatars.map((a) => `<button class="av ${a === av ? 'on' : ''}" data-av="${a}">${a}</button>`).join('')}</div></div>
       <div class="row"><label>Programme (facultatif)</label><input id="pf-program" maxlength="40" value="${esc(p.program || '')}" placeholder="Médecine, bac en biologie…"></div>
-      <div class="row"><label>Objectif de cartes par jour</label><input id="pf-goal" type="number" min="10" max="5000" value="${p.daily_goal || 100}" style="width:110px">
-        <span class="small muted">Les classements comparent surtout le % de <b>ton propre</b> objectif : choisis-le honnêtement.</span></div>
+      <div class="row"><label>Objectif de secours</label><input id="pf-goal" type="number" min="10" max="5000" value="${p.daily_goal || 100}" style="width:110px">
+        <span class="small muted">Ton objectif est <b>automatique</b> : ce qu'Anki te donne chaque jour. Ce nombre sert seulement les jours où Anki sur cet ordinateur n'a rien vu (tout fait sur téléphone, anciens jours).</span></div>
       <div class="row"><button class="btn primary" id="pf-save">${first ? 'Créer mon profil' : 'Enregistrer'}</button></div></div>`;
   }
 
@@ -125,10 +125,20 @@
   function bindCommon() {
     const r = $('#refresh');
     if (r) r.onclick = () => api('refresh');
+    const u = $('#install-update');
+    if (u) u.onclick = async () => { u.disabled = true; u.textContent = 'Téléchargement…'; await api('install_update'); };
+  }
+
+  function updateBanner() {
+    if (!S.update) return '';
+    return `<div class="update"><div><b>🎁 Mise à jour disponible</b>
+      ${S.update.nouveautes ? `<div class="small">${esc(S.update.nouveautes)}</div>` : ''}</div>
+      <button class="btn primary small" id="install-update">Installer</button></div>`;
   }
 
   // -- 🏆 group
   const CRITERIA = [
+    ['points', 'points ⭐', (p) => p.week.points, (p) => p.week.points + ' pts'],
     ['pct', '% de son objectif', (p) => p.week.pct, (p) => p.week.pct + ' %'],
     ['validated', 'jours objectif atteint', (p) => p.week.validated, (p) => p.week.validated + '/7'],
     ['streak', 'série 🔥', (p) => p.streak, (p) => p.streak + ' j'],
@@ -142,21 +152,21 @@
     const v = S.view;
     if (!v) return '<div class="card muted">Chargement du groupe…</div>';
     const crit = CRITERIA.find((c) => c[0] === sortBy) || CRITERIA[0];
-    const ranked = v.players.slice().sort((a, b) => crit[2](b) - crit[2](a) || b.week.pct - a.week.pct);
+    const ranked = v.players.slice().sort((a, b) => crit[2](b) - crit[2](a) || b.week.points - a.week.points);
     const rows = ranked.map((p, i) => `<tr class="${p.me ? 'me' : ''}"><td class="rank">${i + 1}</td><td>${who(p)}</td>
-      <td class="num"><b>${crit[3](p)}</b></td>${crit[0] === 'pct' ? '' : `<td class="num muted">${p.week.pct} %</td>`}</tr>`).join('');
-    const today = v.players.map((p) => `<div class="today-row"><div class="small">${who(p)} <span class="muted">${fmt(p.today_cards)}/${fmt(p.goal)}</span> ${p.today_done ? '✅' : ''}</div>
+      <td class="num"><b>${crit[3](p)}</b></td>${crit[0] === 'points' ? `<td class="num muted">${p.week.pct} %</td>` : `<td class="num muted">${p.week.points} pts</td>`}</tr>`).join('');
+    const today = v.players.map((p) => `<div class="today-row"><div class="small">${who(p)} <span class="muted">${fmt(p.today_cards)} cartes · ${Math.min(150, p.today_pct)} % · ${p.today_points} pts</span> ${p.today_done ? '✅' : ''}</div>
       <div class="bar ${p.today_done ? 'green' : ''}"><div style="width:${Math.min(100, p.today_pct)}%"></div></div></div>`).join('');
     let duel = '<span class="small muted">Il faut au moins 2 joueurs.</span>';
     if (v.duel) {
       const [a, b] = v.duel.map(player);
-      duel = `<div class="duel"><div>${esc(a.avatar)} <b>${esc(a.pseudo)}</b><div class="big gold">${a.week.pct} %</div></div>
-        <div class="vs">VS</div><div>${esc(b.avatar)} <b>${esc(b.pseudo)}</b><div class="big">${b.week.pct} %</div></div></div>`;
+      duel = `<div class="duel"><div>${esc(a.avatar)} <b>${esc(a.pseudo)}</b><div class="big gold">${a.week.points} pts</div><div class="tiny muted">${a.week.pct} % de sa semaine</div></div>
+        <div class="vs">VS</div><div>${esc(b.avatar)} <b>${esc(b.pseudo)}</b><div class="big">${b.week.points} pts</div><div class="tiny muted">${b.week.pct} % de sa semaine</div></div></div>`;
     }
     const weekDone = v.players.filter((p) => p.week.validated >= v.week_goal.days).length;
     return `<div class="card"><h2>☀️ Aujourd'hui</h2>${today}</div>
     <div class="grid g2 mt">
-      <div class="card"><h2>⚔️ Duel <span class="right">% de son objectif depuis lundi</span></h2>${duel}</div>
+      <div class="card"><h2>⚔️ Duel <span class="right">points depuis lundi</span></h2>${duel}</div>
       <div class="card"><h2>🤝 Ensemble</h2>
         <div class="small">Objectif de la semaine (${v.week_goal.days} jours chacun) : <b>${weekDone}/${v.players.length}</b> ${v.week_goal.done ? '🎉' : ''}</div>
         <div class="small" style="margin-top:4px">Série de groupe : <b>${v.group_streak} ${plural(v.group_streak, 'jour', 'jours')} 🔥</b> <span class="muted">(tout le monde à son objectif)</span></div></div>
@@ -164,7 +174,10 @@
     <div class="card mt"><div class="split"><h2 style="margin:0">🏆 Classement de la semaine</h2>
       <select class="sel" id="sort">${CRITERIA.map((c) => `<option value="${c[0]}" ${c[0] === crit[0] ? 'selected' : ''}>${c[1]}</option>`).join('')}</select></div>
       <table>${rows}</table>
-      <div class="tiny muted">Programmes différents : on compare d'abord le % de <b>son propre</b> objectif (max 150 % par jour).</div></div>`;
+      <details class="tiny muted"><summary>Comment on gagne des points ?</summary>
+        Ton objectif = ce qu'Anki te donne chaque jour (révisions + nouvelles cartes). Par jour :
+        jusqu'à <b>10 pts</b> pour la part faite (+3 max si tu dépasses) · <b>+3</b> régularité (objectif atteint hier et aujourd'hui) ·
+        <b>+3</b> zéro retard · <b>+2</b> rétention ≥ 85 %. Faire plus de cartes que l'autre ne rapporte rien en soi : c'est <b>ta</b> journée bien faite qui compte.</details></div>`;
   }
 
   function bindSort() {

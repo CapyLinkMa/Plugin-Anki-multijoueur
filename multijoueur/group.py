@@ -6,6 +6,14 @@ they don't have the same number of cards. Rankings and the duel compare
 mostly **the share of one's own daily goal** (capped, so one huge day can't
 buy the week), regularity and retention; raw card counts stay visible but
 only as information.
+
+Points (decided with Xyroob, 2026-10-01): the goal is what Anki asks each
+day (see api.server_row), and points reward doing *your* day well, never the
+raw volume, so a lighter program can keep up with a heavier one:
+  - up to 10 for the share of the day done, +3 at most beyond 100 %
+  - +3 regularity: goal reached today and yesterday
+  - +3 zero backlog: goal reached with no overdue card left
+  - +2 retention ≥ 85 % (at least 20 reviews)
 """
 
 import datetime
@@ -16,6 +24,13 @@ LIVE_MINUTES = 10          # "en train d'étudier" if seen studying in the last 
 HEATMAP_WEEKS = 26
 CHART_DAYS = 30
 STREAK_STEPS = (7, 14, 30, 60, 100, 200, 365)
+PTS_DAY = 10
+PTS_EXTRA = 3              # beyond 100 %: +1 per ~17 %, up to the 150 % cap
+PTS_REGULAR = 3
+PTS_NO_BACKLOG = 3
+PTS_RETENTION = 2
+RETENTION_MIN = 0.85
+RETENTION_REVIEWS = 20
 
 
 def d(iso):
@@ -42,6 +57,24 @@ def pct(row, member):
 
 def validated(row, member):
     return bool(row) and (row.get("cards") or 0) >= goal_of(row, member)
+
+
+def day_points(row, member, prev_row=None):
+    """{"total", "day", "extra", "regular", "no_backlog", "retention"} for one day."""
+    out = {"day": 0, "extra": 0, "regular": 0, "no_backlog": 0, "retention": 0}
+    if row and (row.get("cards") or 0) > 0:
+        p = pct(row, member)
+        out["day"] = round(PTS_DAY * min(1.0, p))
+        out["extra"] = round(PTS_EXTRA * max(0.0, p - 1) / (PCT_CAP - 1))
+        done = validated(row, member)
+        if done and validated(prev_row, member):
+            out["regular"] = PTS_REGULAR
+        if done and row.get("overdue") == 0:
+            out["no_backlog"] = PTS_NO_BACKLOG
+        if (row.get("review_count") or 0) >= RETENTION_REVIEWS and (row.get("retention") or 0) >= RETENTION_MIN:
+            out["retention"] = PTS_RETENTION
+    out["total"] = sum(out.values())
+    return out
 
 
 def by_user(day_rows):
@@ -81,9 +114,12 @@ def week_stats(rows, member, today):
     start = monday(today)
     days = [start + datetime.timedelta(days=i) for i in range((today - start).days + 1)]
     week = [rows.get(iso(x)) for x in days]
+    pts = [day_points(rows.get(iso(x)), member, rows.get(iso(x - datetime.timedelta(days=1)))) for x in days]
     reviews = sum((r or {}).get("review_count") or 0 for r in week)
     kept = sum(((r or {}).get("retention") or 0) * ((r or {}).get("review_count") or 0) for r in week)
     return {
+        "points": sum(p["total"] for p in pts),
+        "points_detail": {k: sum(p[k] for p in pts) for k in ("day", "extra", "regular", "no_backlog", "retention")},
         "pct": round(100 * sum(pct(r, member) for r in week) / len(days)),
         "cards": sum((r or {}).get("cards") or 0 for r in week),
         "minutes": sum((r or {}).get("minutes") or 0 for r in week),
@@ -146,9 +182,10 @@ def build(members, day_rows, today_iso, me, now=None):
             "goal": int(m.get("daily_goal") or 100), "program": m.get("program"),
             "live": is_live(m, now), "today_cards": (today_row or {}).get("cards") or 0,
             "today_pct": round(100 * pct(today_row, m)), "today_done": validated(today_row, m),
+            "today_points": day_points(today_row, m, rows.get(iso(today - datetime.timedelta(days=1))))["total"],
             "streak": streak(rows, m, today), "week": week_stats(rows, m, today), "records": records(rows, m),
         })
-    ranked = sorted(players, key=lambda p: (-p["week"]["pct"], -p["week"]["validated"], p["pseudo"].lower()))
+    ranked = sorted(players, key=lambda p: (-p["week"]["points"], -p["week"]["pct"], p["pseudo"].lower()))
     regular = sorted(players, key=lambda p: (-p["streak"], -p["week"]["validated"], p["pseudo"].lower()))
     week_start = monday(today)
     heat = []

@@ -20,6 +20,7 @@ REACTION_CODES = {v: k for k, v in REACTIONS.items()}
 USERNAME = re.compile(r"[a-z0-9._-]{3,24}")
 FIRST_SYNC_DAYS = 365
 SYNC_DAYS = 14   # re-sent every time: reviews synced in later from a phone (no add-on there) are caught up
+TARGET_DAYS_KEPT = 60
 AVATARS = ["🙂", "🦫", "🦊", "🐼", "🐸", "🦉", "🐙", "🦄", "🐯", "🐨", "🐧", "🦖", "🧠", "🫀", "🫁", "🧬", "🔬", "💊", "🩺", "📚"]
 
 
@@ -35,6 +36,8 @@ class MultiAPI:
         self.error = None
         self.syncing = False
         self.listeners = []   # called with the new snapshot after each background sync
+        self.update = None              # {"version", "nouveautes"} when GitHub has a newer version
+        self.on_install_update = None   # set by __init__.py (needs Qt)
 
     # -- local file -------------------------------------------------------------------------
     def _load(self):
@@ -45,6 +48,7 @@ class MultiAPI:
             data = {}
         data.setdefault("sent", [])
         data.setdefault("first_sync_done", False)
+        data.setdefault("targets", {})
         return data
 
     def _save(self):
@@ -60,7 +64,40 @@ class MultiAPI:
         col = self.col_getter()
         if col is None:
             return None
-        return metrics.recent_days(col, self.days_to_send())
+        days = metrics.recent_days(col, self.days_to_send())
+        try:
+            self.note_target(days[-1], metrics.due_left(col))
+        except Exception:
+            pass   # no automatic goal this time: the last one seen today (or the profile's) is used
+        return days
+
+    def note_target(self, today, left):
+        """Remembers what Anki asked for today (done so far + still due), and
+        the backlog: the next days only re-send numbers read from the review
+        log, which knows neither."""
+        targets = self.store.setdefault("targets", {})
+        targets[today["day"]] = {"total": (today.get("done") or 0) + left, "overdue": today.get("overdue")}
+        for day in sorted(targets)[:-TARGET_DAYS_KEPT]:
+            del targets[day]
+        self._save()
+
+    def server_row(self, row, fallback_goal):
+        """A day as stored on the server. The automatic goal is what Anki asked
+        that day; the server only keeps `cards` and `goal`, so the goal is
+        scaled to give cards / goal = distinct cards done / cards asked (the
+        same % for any version of the add-on, "À revoir" presses don't count
+        twice). Days Anki on this computer never saw use the profile's goal."""
+        out = {k: v for k, v in row.items() if k != "done"}
+        target = self.store.get("targets", {}).get(row["day"])
+        if target and target.get("total"):
+            done = row.get("done") or 0
+            goal = (row.get("cards") or 0) * target["total"] / done if done else target["total"]
+            out["goal"] = min(5000, max(10, round(goal)))
+            if out.get("overdue") is None:
+                out["overdue"] = target.get("overdue")
+        else:
+            out["goal"] = fallback_goal
+        return out
 
     def days_to_send(self):
         """14 days normally; everything since the last successful send when
@@ -85,7 +122,7 @@ class MultiAPI:
             return out
         if days:
             goal = int(profile.get("daily_goal") or 100)
-            srv.push_days([dict(r, goal=goal) for r in days])
+            srv.push_days([self.server_row(r, goal) for r in days])
             out["pushed"] = True
         if profile.get("group_id"):
             out["group"] = srv.group()
@@ -185,7 +222,8 @@ class MultiAPI:
         return {"profile": c["profile"], "group": c["group"], "view": view, "feed": feed, "me": me,
                 "account": {"username": self.server.username, "secured": bool(self.server.username)},
                 "error": self.error, "syncing": self.syncing, "last_sync": self.store.get("last_sync"),
-                "avatars": AVATARS, "emojis": list(REACTIONS.values()), "ready": bool(self.store.get("last_sync"))}
+                "avatars": AVATARS, "emojis": list(REACTIONS.values()), "ready": bool(self.store.get("last_sync")),
+                "update": self.update}
 
     # -- the window's requests ---------------------------------------------------------------------
     def call(self, name, payload=None):
@@ -260,11 +298,17 @@ class MultiAPI:
 
     def do_sign_in(self, username, password):
         self.server.sign_in(self._check_credentials(username, password), password)
-        self.store = {"sent": [], "first_sync_done": False}
+        self.store = {"sent": [], "first_sync_done": False, "targets": self.store.get("targets", {})}
         self._save()
         for key in self.cache:
             self.cache[key] = None if key in ("profile", "group") else []
         self.sync()
+        return {}
+
+    def do_install_update(self):
+        if not self.update or not self.on_install_update:
+            return {"ok": False, "error": "Aucune mise à jour à installer."}
+        self.on_install_update()
         return {}
 
     def do_react(self, event_id, emoji, on=True):

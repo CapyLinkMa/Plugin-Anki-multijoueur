@@ -11,6 +11,12 @@ n'importe quel autre plugin : il ne lit que les chiffres d'Anki.
 2. Redémarrer Anki → menu **Outils → 👥 Multijoueur** : créer son profil, puis créer ou rejoindre un groupe
    (code à 6 caractères).
 
+## Mises à jour
+Plus besoin de recopier le dossier : quand une nouvelle version est sur GitHub, Anki le dit au démarrage
+(« Une mise à jour du Multijoueur est disponible ») → **Oui** → redémarrer Anki. On peut aussi vérifier
+à la main : **Outils → 👥 Multijoueur : chercher une mise à jour**.
+Pour publier une version : augmenter le numéro dans `multijoueur/version.json` (+ une phrase de nouveautés).
+
 ## Serveur (une seule fois, déjà fait pour notre groupe)
 Projet Supabase gratuit : coller `supabase/schema.sql` dans SQL Editor → Run, et activer
 Authentication → Sign In / Providers → « Allow anonymous sign-ins », et désactiver « Confirm email »

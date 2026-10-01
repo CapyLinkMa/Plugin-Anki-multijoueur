@@ -65,3 +65,5 @@ svg text { fill: var(--muted); font-size: 10px; }
 .today-row { display: grid; grid-template-columns: minmax(0, 1fr) 90px; gap: 2px 8px; align-items: center; margin: 3px 0; }
 .sel { font-size: 12px; padding: 2px 5px; }
 .split { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.update { display: flex; gap: 10px; align-items: center; justify-content: space-between; background: #1d2f22; border: 1px solid #2f6b44; color: #d6ffe4; border-radius: 10px; padding: 9px 12px; margin-bottom: 10px; }
+details summary { cursor: pointer; margin-top: 6px; }

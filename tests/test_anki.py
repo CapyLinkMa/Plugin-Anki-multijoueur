@@ -48,6 +48,8 @@ class Metrics(unittest.TestCase):
         self.assertEqual(today["overdue"], 0)
         self.assertTrue(all(d["cards"] == 0 for d in days[:-1]))
         self.assertEqual(today["day"], metrics.day_date(self.col, self.col.sched.today))
+        self.assertEqual(today["done"], 3)            # 3 distinct new cards
+        self.assertEqual(metrics.due_left(self.col), 7)   # 10 new cards, 3 started: 7 left
 
 
 if __name__ == "__main__":

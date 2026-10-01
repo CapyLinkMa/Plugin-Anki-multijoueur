@@ -1,5 +1,5 @@
 """Opens the group window in a normal browser with a fake server and two
-fake players (nothing goes online): python tools/dev_server.py [--port=8790] [--empty]"""
+fake players (nothing goes online): python tools/dev_server.py [--port=8790] [--empty] [--update]"""
 import datetime
 import json
 import os
@@ -46,6 +46,8 @@ if "--empty" not in sys.argv:
     me.sync()
 else:
     me.collect = lambda: []
+if "--update" in sys.argv:
+    me.update = {"version": 99, "nouveautes": "Exemple de nouveautés."}
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):

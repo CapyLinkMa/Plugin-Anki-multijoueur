@@ -9,22 +9,22 @@ Tout marche avec les données d'Anki seulement, quel que soit le casino install�
 - [x] 3. ⭐ Classement « régularité » (jours d'étude d'affilée)
 - [ ] 4. Classement par matière (paquet commun)
 - [x] 5. Records personnels et du groupe
-- [ ] 6. Bilan mensuel du groupe
+- [x] 6. Bilan mensuel du groupe
 
 ## ⚔️ Défis et compétition
 - [x] 7. ⭐ Duel de la semaine (le plus de cartes gagne)
 - [x] 8. Défi sur mesure (« 500 cartes d'ici dimanche »)
-- [ ] 9. Course à l'objectif (le premier à X cartes)
+- [x] 9. Course à l'objectif (le premier à X cartes)
 - [ ] 10. Défi de rétention (meilleure rétention, au moins 200 révisions)
 - [x] 11. Défi « zéro retard »
-- [ ] 12. Paris amicaux en points multijoueur
+- [x] 12. Paris amicaux en points multijoueur
 - [x] 13. Saisons mensuelles avec titres
 
 ## 🤝 Coopération
-- [ ] 14. ⭐ Boss d'équipe (objectif commun avec barre de vie partagée)
+- [x] 14. ⭐ Boss d'équipe (objectif commun avec barre de vie partagée)
 - [x] 15. ⭐ Objectif commun de la semaine (tous les deux au moins 5 jours)
 - [x] 16. Série de groupe (monte seulement si tout le monde a étudié)
-- [ ] 17. Encourager l'autre d'un clic s'il n'a pas encore étudié
+- [x] 17. Encourager l'autre d'un clic s'il n'a pas encore étudié
 - [ ] 18. Boss d'examen commun (même date d'examen)
 
 ## 👥 Social
@@ -52,3 +52,9 @@ Tout marche avec les données d'Anki seulement, quel que soit le casino install�
 
 ## Questions ouvertes
 - Le groupe pourra-t-il s'agrandir avec d'autres amis ? (oui / non)
+
+## Avis de Xyroob (2026-10-01)
+- Ajoute : 6 bilan mensuel, 9 course à l'objectif, 12 paris amicaux, 14 boss d'équipe, 17 encourager d'un clic.
+- D'accord avec le reste des choix de CapyLinkMa.
+- Interface : à rendre plus intuitive et plus belle.
+- Points : à revoir ensemble pour que ce soit équitable (Xyroob a beaucoup plus de cartes à faire).
