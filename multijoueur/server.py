@@ -242,4 +242,4 @@ class Server:
                          prefer="resolution=ignore-duplicates")
         else:
             self.request("DELETE", f"/rest/v1/reactions?event_id=eq.{int(event_id)}&user_id=eq.{self.user_id}"
-                                   f"&emoji=eq.{urllib.request.quote(emoji)}")
+                                   f"&emoji=eq.{emoji}")

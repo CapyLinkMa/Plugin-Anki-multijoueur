@@ -15,6 +15,8 @@ from . import group
 from . import metrics
 from .server import ServerError
 
+REACTIONS = {"bravo": "👏", "feu": "🔥", "force": "💪", "wow": "😮", "coeur": "❤️"}   # stored code -> shown emoji
+REACTION_CODES = {v: k for k, v in REACTIONS.items()}
 USERNAME = re.compile(r"[a-z0-9._-]{3,24}")
 FIRST_SYNC_DAYS = 365
 SYNC_DAYS = 14   # re-sent every time: reviews synced in later from a phone (no add-on there) are caught up
@@ -171,18 +173,19 @@ class MultiAPI:
         reactions = {}
         for r in c["reactions"]:
             entry = reactions.setdefault(r["event_id"], {})
-            who = entry.setdefault(r["emoji"], [])
+            who = entry.setdefault(REACTIONS.get(r["emoji"], r["emoji"]), [])
             who.append(names.get(r["user_id"], {}).get("pseudo", "?"))
         feed = [{"id": e["id"], "kind": e["kind"], "payload": e.get("payload") or {}, "at": e["created_at"],
                  "who": names.get(e["user_id"], {"pseudo": "Ancien membre", "avatar": "👤"}),
                  "mine": e["user_id"] == me,
                  "reactions": reactions.get(e["id"], {}),
-                 "my_reactions": [r["emoji"] for r in c["reactions"] if r["event_id"] == e["id"] and r["user_id"] == me]}
+                 "my_reactions": [REACTIONS.get(r["emoji"], r["emoji"]) for r in c["reactions"]
+                                  if r["event_id"] == e["id"] and r["user_id"] == me]}
                 for e in c["events"]]
         return {"profile": c["profile"], "group": c["group"], "view": view, "feed": feed, "me": me,
                 "account": {"username": self.server.username, "secured": bool(self.server.username)},
                 "error": self.error, "syncing": self.syncing, "last_sync": self.store.get("last_sync"),
-                "avatars": AVATARS, "emojis": ["👏", "🔥", "💪", "😮", "❤️"], "ready": bool(self.store.get("last_sync"))}
+                "avatars": AVATARS, "emojis": list(REACTIONS.values()), "ready": bool(self.store.get("last_sync"))}
 
     # -- the window's requests ---------------------------------------------------------------------
     def call(self, name, payload=None):
@@ -265,6 +268,8 @@ class MultiAPI:
         return {}
 
     def do_react(self, event_id, emoji, on=True):
-        self.server.react(event_id, emoji, bool(on))
+        if emoji not in REACTION_CODES:
+            return {"ok": False, "error": "Réaction inconnue."}
+        self.server.react(event_id, REACTION_CODES[emoji], bool(on))
         self.sync()
         return {}

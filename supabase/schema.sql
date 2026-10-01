@@ -7,7 +7,6 @@
 -- et ne peut écrire que ses propres lignes. On n'y stocke que des chiffres
 -- d'étude et un pseudo : jamais le contenu des cartes.
 
-create extension if not exists pgcrypto;
 
 -- -- tables -------------------------------------------------------------------------------
 create table if not exists public.groups (
@@ -56,10 +55,15 @@ create index if not exists events_group_idx on public.events (group_id, id desc)
 create table if not exists public.reactions (
   event_id bigint not null references public.events on delete cascade,
   user_id uuid not null default auth.uid() references auth.users on delete cascade,
-  emoji text not null check (emoji in ('👏', '🔥', '💪', '😮', '❤️')),
+  emoji text not null,   -- a short code (bravo, feu, force, wow, coeur), shown as an emoji by the add-on
   created_at timestamptz not null default now(),
   primary key (event_id, user_id, emoji)
 );
+
+-- reactions are stored as plain codes (emoji characters don't survive every copy-paste)
+alter table public.reactions drop constraint if exists reactions_emoji_check;
+alter table public.reactions add constraint reactions_emoji_check
+  check (emoji in ('bravo', 'feu', 'force', 'wow', 'coeur'));
 
 -- -- helper: my group (security definer, so the rules below don't loop on themselves) ----
 create or replace function public.my_group() returns uuid
@@ -129,8 +133,11 @@ begin
     raise exception 'Crée ton profil avant de créer un groupe.';
   end if;
   loop
-    v_code := upper(substr(translate(encode(gen_random_bytes(6), 'base64'), '+/=0O1Il', ''), 1, 6));
-    exit when char_length(v_code) = 6 and not exists (select 1 from public.groups where code = v_code);
+    v_code := '';
+    for i in 1..6 loop  -- no 0/O, 1/I/L: easy to read out loud
+      v_code := v_code || substr('ABCDEFGHJKMNPQRSTUVWXYZ23456789', 1 + floor(random() * 31)::int, 1);
+    end loop;
+    exit when not exists (select 1 from public.groups where code = v_code);
   end loop;
   insert into public.groups (code, name, created_by) values (v_code, trim(p_name), auth.uid()) returning id into v_id;
   update public.profiles set group_id = v_id, updated_at = now() where id = auth.uid();
