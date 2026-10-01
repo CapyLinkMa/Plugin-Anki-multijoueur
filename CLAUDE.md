@@ -65,7 +65,9 @@ v3 (Xyroob) : nouvelle interface, 17 encourager d'un clic (+ « Féliciter » = 
 25 badges de groupe, 26 points multijoueur, 27 trophées de saison.
 
 ## En cours
-- (personne)
+- CapyLinkMa (Claude, 2026-10-01) : TOUT le « Reste à faire » (onglet Défis : défi sur mesure, zéro retard,
+  course, boss d'équipe, paris ; saisons + trophées ; bilan mensuel ; badges de groupe ; points/titres/cadres ;
+  pomodoro ; messages). Merci de ne pas toucher à ces parties en attendant le push.
 
 ## Pour Claude
 - Plugin Anki (Python 3.13, Qt6 via `aqt`). Pas de pip dans Anki : seulement la bibliothèque
