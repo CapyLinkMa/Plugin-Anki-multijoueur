@@ -56,5 +56,5 @@ Tout marche avec les données d'Anki seulement, quel que soit le casino install�
 ## Avis de Xyroob (2026-10-01)
 - Ajoute : 6 bilan mensuel, 9 course à l'objectif, 12 paris amicaux, 14 boss d'équipe, 17 encourager d'un clic.
 - D'accord avec le reste des choix de CapyLinkMa.
-- Interface : à rendre plus intuitive et plus belle.
+- Interface : à rendre plus intuitive et plus belle (fait en v3, d'après la maquette de Xyroob).
 - Points : à revoir ensemble pour que ce soit équitable (Xyroob a beaucoup plus de cartes à faire).

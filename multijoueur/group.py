@@ -177,12 +177,14 @@ def build(members, day_rows, today_iso, me, now=None):
     for m in members:
         rows = rows_by_user.get(m["id"], {})
         today_row = rows.get(today_iso)
+        detail = day_points(today_row, m, rows.get(iso(today - datetime.timedelta(days=1))))
         players.append({
             "id": m["id"], "pseudo": m["pseudo"], "avatar": m.get("avatar") or "🙂", "me": m["id"] == me,
             "goal": int(m.get("daily_goal") or 100), "program": m.get("program"),
             "live": is_live(m, now), "today_cards": (today_row or {}).get("cards") or 0,
             "today_pct": round(100 * pct(today_row, m)), "today_done": validated(today_row, m),
-            "today_points": day_points(today_row, m, rows.get(iso(today - datetime.timedelta(days=1))))["total"],
+            "today_points": detail["total"], "today_detail": detail,
+            "yesterday_done": validated(rows.get(iso(today - datetime.timedelta(days=1))), m),
             "streak": streak(rows, m, today), "week": week_stats(rows, m, today), "records": records(rows, m),
         })
     ranked = sorted(players, key=lambda p: (-p["week"]["points"], -p["week"]["pct"], p["pseudo"].lower()))

@@ -119,6 +119,16 @@ class TwoPlayers(unittest.TestCase):
         before = len(self.fake.events)
         med.sync()
         self.assertEqual(len(self.fake.events), before)      # milestones post only once
+        # encourage (feature 17): once a day, shown in the feed with the friend's name
+        bio_id = bio.server.user_id
+        self.assertTrue(med.call("encourage", {"player_id": bio_id})["ok"])
+        self.assertFalse(med.call("encourage", {"player_id": bio_id})["ok"])
+        self.assertFalse(med.call("encourage", {"player_id": "stranger"})["ok"])
+        nudge = next(e for e in med.snapshot()["feed"] if e["kind"] == "encourage")
+        self.assertEqual((nudge["who"]["pseudo"], nudge["to"]), ("Slava", "Ami"))
+        ami = next(p for p in med.snapshot()["view"]["players"] if p["id"] == bio_id)
+        self.assertTrue(ami["encouraged"])
+        self.assertIsNotNone(ami["goal_event"])               # "Féliciter" reacts to today's goal
 
     def test_a_stranger_sees_nothing(self):
         med = self.player("med", [])

@@ -194,17 +194,19 @@ class MultiAPI:
             return None
 
     # -- what the window shows -----------------------------------------------------------------
-    def snapshot(self):
-        c = self.cache
-        me = self.server.user_id
-        today = None
+    def today(self):
         col = self.col_getter()
         if col is not None:
             try:
-                today = metrics.day_date(col, col.sched.today)
+                return metrics.day_date(col, col.sched.today)
             except Exception:
-                today = None
-        today = today or datetime.date.today().isoformat()
+                pass
+        return datetime.date.today().isoformat()
+
+    def snapshot(self):
+        c = self.cache
+        me = self.server.user_id
+        today = self.today()
         view = group.build(c["members"], c["days"], today, me, self.now()) if c["group"] else None
         names = {m["id"]: {"pseudo": m["pseudo"], "avatar": m.get("avatar") or "🙂"} for m in c["members"]}
         reactions = {}
@@ -213,12 +215,20 @@ class MultiAPI:
             who = entry.setdefault(REACTIONS.get(r["emoji"], r["emoji"]), [])
             who.append(names.get(r["user_id"], {}).get("pseudo", "?"))
         feed = [{"id": e["id"], "kind": e["kind"], "payload": e.get("payload") or {}, "at": e["created_at"],
+                 "user_id": e["user_id"],
                  "who": names.get(e["user_id"], {"pseudo": "Ancien membre", "avatar": "👤"}),
+                 "to": names.get((e.get("payload") or {}).get("to"), {}).get("pseudo"),
                  "mine": e["user_id"] == me,
                  "reactions": reactions.get(e["id"], {}),
                  "my_reactions": [REACTIONS.get(r["emoji"], r["emoji"]) for r in c["reactions"]
                                   if r["event_id"] == e["id"] and r["user_id"] == me]}
                 for e in c["events"]]
+        if view:
+            for p in view["players"]:
+                # "Féliciter" reacts to today's goal event; "Encourager" once a day
+                p["goal_event"] = next((e["id"] for e in c["events"] if e["user_id"] == p["id"] and e["kind"] == "goal"
+                                        and (e.get("payload") or {}).get("day") == today), None)
+                p["encouraged"] = f"encourage:{p['id']}:{today}" in self.store["sent"]
         return {"profile": c["profile"], "group": c["group"], "view": view, "feed": feed, "me": me,
                 "account": {"username": self.server.username, "secured": bool(self.server.username)},
                 "error": self.error, "syncing": self.syncing, "last_sync": self.store.get("last_sync"),
@@ -309,6 +319,20 @@ class MultiAPI:
         if not self.update or not self.on_install_update:
             return {"ok": False, "error": "Aucune mise à jour à installer."}
         self.on_install_update()
+        return {}
+
+    def do_encourage(self, player_id):
+        """Feature 17: a nudge in the feed for a friend who hasn't finished today."""
+        profile = self.cache.get("profile") or {}
+        if not profile.get("group_id") or player_id not in {m["id"] for m in self.cache["members"]}:
+            return {"ok": False, "error": "Ce joueur n'est pas dans ton groupe."}
+        key = f"encourage:{player_id}:{self.today()}"
+        if key in self.store["sent"]:
+            return {"ok": False, "error": "Tu l'as déjà encouragé aujourd'hui."}
+        self.server.post_event(profile["group_id"], "encourage", {"to": player_id, "day": self.today()})
+        self.store["sent"].append(key)
+        self._save()
+        self.sync()
         return {}
 
     def do_react(self, event_id, emoji, on=True):

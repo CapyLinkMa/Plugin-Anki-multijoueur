@@ -28,8 +28,12 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
   vidage de ses retards, pas seulement le nombre brut de cartes. Chacun fixe son objectif quotidien.
 - Fonctionnalités choisies (2026-10-01) : cochées dans `FONCTIONNALITES.md`.
   CapyLinkMa : 1, 2, 3, 5, 7, 8, 11, 13, 15, 16, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29.
-  Xyroob : d'accord, et ajoute 6, 9, 12, 14, 17. Il veut aussi une interface plus intuitive et plus belle
-  (à faire ensemble : se mettre d'accord avant de toucher au design).
+  Xyroob : d'accord, et ajoute 6, 9, 12, 14, 17.
+- **Interface v3** (2026-10-01, maquette de Xyroob) : onglets Accueil (duel en grand avec anneaux du jour,
+  « ta journée », tes points du jour, série + objectif commun) · Classement · Stats · Activité ; le profil
+  derrière le bouton avatar en haut. Une couleur par joueur partout : toi = ambre, les autres = bleu puis
+  d'autres teintes. Polices Sora (titres) + DM Sans (texte), avec repli système hors ligne.
+  Un onglet « Défis » viendra avec le boss d'équipe, la course et les paris.
 - **Objectif automatique et points** (2026-10-01, proposé par Xyroob qui a beaucoup plus de cartes) :
   l'objectif du jour = ce qu'Anki demande (cartes distinctes faites + encore dues, limites des paquets
   comprises), retenu chaque jour dans `user_files/state.json` (`targets`). Le serveur ne garde que `cards`
@@ -53,10 +57,11 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
 16 série de groupe, 19 fil d'activité, 20 réactions, 21 statut en direct, 24 profil,
 28 graphique, 29 carte de chaleur.
 v2 (Xyroob) : objectif automatique, points équitables, mises à jour depuis GitHub.
+v3 (Xyroob) : nouvelle interface, 17 encourager d'un clic (+ « Féliciter » = 👏 sur sa journée finie).
 
 ## Reste à faire (choisi)
-6 bilan mensuel, 9 course à l'objectif, 12 paris amicaux, 14 boss d'équipe, 17 encourager d'un clic,
-interface plus belle et plus intuitive, 8 défi sur mesure, 11 défi zéro retard, 13 saisons, 22 pomodoro synchronisé, 23 messages courts,
+6 bilan mensuel, 9 course à l'objectif, 12 paris amicaux, 14 boss d'équipe (onglet « Défis » à ajouter),
+8 défi sur mesure, 11 défi zéro retard, 13 saisons, 22 pomodoro synchronisé, 23 messages courts,
 25 badges de groupe, 26 points multijoueur, 27 trophées de saison.
 
 ## En cours
