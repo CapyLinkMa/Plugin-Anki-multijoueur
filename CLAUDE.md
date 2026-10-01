@@ -16,7 +16,13 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
 - **Vie privée** : on n'envoie que des chiffres d'étude et un pseudo, jamais le contenu des cartes.
 - **Langue** : interface en français. Les deux utilisateurs ne sont pas développeurs : leur
   expliquer simplement, sans jargon.
-- Fonctionnalités : à choisir ensemble dans `FONCTIONNALITES.md` (cocher la liste).
+- **Programmes différents** : l'un est en médecine, l'autre au bac en biologie. Pas de paquet
+  commun, des volumes de cartes différents. Donc les classements et défis doivent être **équitables** :
+  comparer surtout des pourcentages de son propre objectif, la régularité, la rétention et le
+  vidage de ses retards, pas seulement le nombre brut de cartes. Chacun fixe son objectif quotidien.
+- Fonctionnalités choisies (2026-10-01, côté CapyLinkMa) : cochées dans `FONCTIONNALITES.md` :
+  1, 2, 3, 5, 7, 8, 11, 13, 15, 16, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29.
+  En attente de l'avis de Xyroob.
 
 ## Travailler à deux sur ce dépôt
 - Avant de commencer : `git pull`. En finissant une partie : commit clair en français + `git push`.
