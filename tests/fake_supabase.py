@@ -24,6 +24,7 @@ class FakeSupabase:
         self.calls = []
         self.accounts = {}    # email -> (password, user id)
         self.confirm_email = False
+        self.clock = None     # tests can fix the time events are posted at
 
     # -- helpers -------------------------------------------------------------------------
     def _group_of(self, uid):
@@ -34,8 +35,9 @@ class FakeSupabase:
         return other == uid or (g is not None and self._group_of(other) == g)
 
     def _event(self, group_id, uid, kind, payload=None):
+        at = self.clock() if self.clock else datetime.datetime.now(datetime.timezone.utc)
         self.events.append({"id": next(self.ids), "group_id": group_id, "user_id": uid, "kind": kind,
-                            "payload": payload or {}, "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat()})
+                            "payload": payload or {}, "created_at": at.isoformat()})
 
     def sign_up(self):
         uid = str(uuid.uuid4())
@@ -134,7 +136,15 @@ class FakeSupabase:
                 self._event(data["group_id"], uid, data["kind"], data.get("payload"))
                 return 201, ""
             g = self._group_of(uid)
-            rows = [e for e in reversed(self.events) if e["group_id"] == g]
+            rows = [e for e in self.events if e["group_id"] == g]
+            if "kind" in query:
+                kinds = query["kind"][0][4:-1].split(",")
+                rows = [e for e in rows if e["kind"] in kinds]
+            if "created_at" in query:
+                since = query["created_at"][0].split(".", 1)[1]
+                rows = [e for e in rows if e["created_at"][:10] >= since[:10]]
+            if query.get("order") != ["id.asc"]:
+                rows = rows[::-1]
             return 200, json.dumps(rows[: int(query.get("limit", ["60"])[0])])
         if table == "reactions":
             if method == "POST":
@@ -154,7 +164,8 @@ class FakeSupabase:
         if name == "create_group":
             gid = str(uuid.uuid4())
             code = gid.replace("-", "")[:6].upper()
-            self.groups[gid] = {"id": gid, "code": code, "name": data["p_name"]}
+            self.groups[gid] = {"id": gid, "code": code, "name": data["p_name"],
+                               "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
             self.profiles[uid]["group_id"] = gid
             self._event(gid, uid, "joined")
             return 200, json.dumps(code)

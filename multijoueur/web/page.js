@@ -1,8 +1,10 @@
 /* Anki Multijoueur - the group window. Renders the snapshot from api.py;
  * talks to Python through QWebChannel inside Anki, or to tools/dev_server.py
  * over HTTP in a normal browser.
- * Screens: Accueil (duel, today, points, together) · Classement · Stats ·
- * Activité, and the profile behind the avatar button. */
+ * Screens: Accueil (duel, pomodoro, today, points, together) · Défis (défis,
+ * boss, course, paris) · Classement (saison) · Stats (bilan, badges) ·
+ * Activité (messages), and the profile (titre, cadre, trophées) behind the
+ * avatar button. The game data (S.game) is computed by games.py. */
 (function () {
   'use strict';
 
@@ -11,6 +13,9 @@
   let draftAvatar = null;
   let sortBy = 'points';
   let showLogin = false;
+  let reportMonth = null;
+  let pendingRender = false;
+  let form = null;          // the "Nouveau défi" form, kept across re-renders
 
   // ---------------------------------------------------------------- bridge
   let callPy = null;
@@ -37,7 +42,11 @@
     return res;
   }
 
-  window.MJ = { update(snap) { S = snap; render(); } };
+  // a background refresh must not wipe what the player is typing
+  const typing = () => { const a = document.activeElement; return a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName); };
+  function softRender() { if (typing()) pendingRender = true; else render(); }
+  document.addEventListener('focusout', () => setTimeout(() => { if (pendingRender && !typing()) { pendingRender = false; render(); } }, 50));
+  window.MJ = { update(snap) { S = snap; softRender(); } };
 
   // ---------------------------------------------------------------- helpers
   const $ = (s) => document.querySelector(s);
@@ -70,7 +79,12 @@
     const others = players().filter((o) => !o.me);
     return OTHERS[Math.max(0, others.findIndex((o) => o.id === p.id)) % OTHERS.length];
   }
-  const dot = (p, cls = '') => `<div class="dot ${cls}" style="background:${color(p)}">${esc(p.avatar)}</div>`;
+  const G = () => S.game || null;
+  const gp = (id) => ((G() || {}).players || {})[id] || null;
+  const frameOf = (id) => (gp(id) || {}).frame || 'aucun';
+  const pseudo = (id) => { const p = player(id); return p ? esc(p.pseudo) : 'Ancien membre'; };
+  const dot = (p, cls = '') => `<div class="dot ${cls} frame-${frameOf(p.id)}" style="background:${color(p)}">${esc(p.avatar)}</div>`;
+  const levelTag = (id) => { const g = gp(id); return g ? `<span class="lvl" title="${g.xp} points gagnés">${g.level.icon} ${esc(g.level.title)}</span>` : ''; };
   const name = (p) => `<b>${esc(p.pseudo)}</b>${p.me ? ' <span class="tiny muted">(toi)</span>' : ''}${p.live ? ' <span class="live">· en train d\'étudier</span>' : ''}`;
   const bar = (pct, col, cls = '') => `<div class="bar ${cls}"><div style="width:${Math.max(0, Math.min(100, pct))}%;background:${col}"></div></div>`;
   function ring(p) {
@@ -79,7 +93,7 @@
       <circle cx="42" cy="42" r="34" fill="none" stroke="var(--line)" stroke-width="7"/>
       <circle cx="42" cy="42" r="34" fill="none" stroke="${color(p)}" stroke-width="7" stroke-linecap="round"
         stroke-dasharray="${C}" stroke-dashoffset="${(C * (1 - pct / 100)).toFixed(1)}" transform="rotate(-90 42 42)"/></svg>
-      <div class="face">${esc(p.avatar)}</div></div>`;
+      <div class="face frame-${frameOf(p.id)}">${esc(p.avatar)}</div></div>`;
   }
 
   // ---------------------------------------------------------------- frame
@@ -88,15 +102,17 @@
     const top = header() + (S.error ? `<div class="err">⚠️ ${esc(S.error)}</div>` : '') + updateBanner();
     if (!S.profile) { app.innerHTML = top + profileForm(true) + loginCard(); bindProfile(); bindAccount(); return; }
     if (!S.group) { app.innerHTML = top + groupChoice(); bindGroup(); return; }
-    const tabs = [['accueil', 'Accueil'], ['classement', 'Classement'], ['stats', 'Stats'], ['activite', 'Activité']];
-    const screens = { accueil: screenHome, classement: screenRanking, stats: screenStats, activite: screenFeed, profil: screenProfile };
+    const tabs = [['accueil', 'Accueil'], ['defis', 'Défis'], ['classement', 'Classement'], ['stats', 'Stats'], ['activite', 'Activité']];
+    const screens = { accueil: screenHome, defis: screenChallenges, classement: screenRanking, stats: screenStats, activite: screenFeed, profil: screenProfile };
     app.innerHTML = top + `<nav class="tabs">${tabs.map(([id, l]) => `<button class="tab ${tab === id ? 'active' : ''}" data-tab="${id}">${l}</button>`).join('')}</nav>` + screens[tab]();
     app.querySelectorAll('[data-tab]').forEach((b) => { b.onclick = () => { tab = b.dataset.tab; render(); }; });
     bindCommon();
-    if (tab === 'accueil') bindHome();
+    if (tab === 'accueil') { bindHome(); bindPomodoro(); }
+    if (tab === 'defis') bindChallenges();
+    if (tab === 'stats') bindStats();
     if (tab === 'classement') bindRanking();
     if (tab === 'activite') bindFeed();
-    if (tab === 'profil') { bindProfile(); bindLeave(); bindAccount(); }
+    if (tab === 'profil') { bindProfile(); bindLeave(); bindAccount(); bindFrames(); }
   }
 
   function header() {
@@ -172,7 +188,7 @@
     if (!v) return '<div class="card muted">Chargement du groupe…</div>';
     const me = players().find((p) => p.me);
     const others = players().filter((p) => !p.me);
-    return duelCard(v) + `<div class="grid g2">${[me, ...others].filter(Boolean).map(todayCard).join('')}</div>`
+    return duelCard(v) + pomodoroCard() + `<div class="grid g2">${[me, ...others].filter(Boolean).map(todayCard).join('')}</div>`
       + (me ? pointsCard(me) : '') + togetherCards(v);
   }
 
@@ -250,7 +266,7 @@
     const ranked = players().slice().sort((a, b) => crit[2](b) - crit[2](a) || b.week.points - a.week.points);
     const top = Math.max(1, ...ranked.map(crit[2]));
     const rows = ranked.map((p, i) => `<div class="rank-row"><div class="rank ${i === 0 ? 'first' : ''}">${i + 1}</div>${dot(p)}
-      <div class="body"><div class="split"><div>${name(p)}</div><div class="num" style="font-size:15px">${crit[3](p)}</div></div>
+      <div class="body"><div class="split"><div>${name(p)} ${levelTag(p.id)}</div><div class="num" style="font-size:15px">${crit[3](p)}</div></div>
       ${bar(100 * crit[2](p) / top, color(p))}
       <div class="tiny muted">${p.week.points} pts · ${p.week.pct} % de sa semaine · série ${p.streak} j${p.week.retention == null ? '' : ` · rétention ${p.week.retention} %`}</div></div></div>`).join('');
     const rule = (val, text) => `<div class="well"><div class="num" style="font-size:15px;color:var(--me)">${val}</div><div class="label">${text}</div></div>`;
@@ -258,6 +274,7 @@
     const best = (label, val, who) => `<div class="card" style="gap:4px"><div class="label">${label}</div><div class="num">${val}</div><div class="tiny muted">${who}</div></div>`;
     return `<div class="chips">${CRITERIA.map((c) => `<button class="chip ${c[0] === crit[0] ? 'on' : ''}" data-sort="${c[0]}">${c[1]}</button>`).join('')}</div>
       <div class="card list">${rows}</div>
+      ${seasonCard()}
       ${crit[0] === 'cards' ? '<div class="tiny muted">Programmes différents : le nombre de cartes est là pour info, il ne fait pas gagner.</div>' : ''}
       <div class="card"><h2>Comment on gagne des points</h2>
         <div class="small muted">Ton objectif = ce qu'Anki te donne chaque jour. Faire plus de cartes que l'autre ne rapporte rien en soi : c'est <b>ta</b> journée bien faite qui compte.</div>
@@ -280,13 +297,23 @@
       case 'record': return `a battu son record : <b>${fmt(p.cards)}</b> cartes en une journée 🏅`;
       case 'streak': return `est à <b>${p.days} jours</b> de série 🔥`;
       case 'encourage': return `encourage <b>${esc(e.to || '?')}</b> à finir sa journée 💪`;
+      case 'msg': return `<span class="bubble">${esc(((S.messages || []).find((m) => m.code === p.code) || { text: '…' }).text)}</span>`;
+      case 'challenge': return `lance ${p.solo ? 'un défi perso' : 'un défi'} : <b>${esc(challengeTitle(p))}</b> ${TYPE_ICON[p.type] || '🎯'}`;
+      case 'bet': return `propose un pari de <b>${p.stake} pts</b> à <b>${pseudo(p.opponent)}</b> 💰`;
+      case 'pomo': return `lance un pomodoro (${p.work} min × ${p.rounds}) 🍅`;
       default: return esc(e.kind);
     }
   }
 
+  function messagesCard() {
+    const left = S.messages_left == null ? 30 : S.messages_left;
+    return `<div class="card"><h2>Message rapide <span class="right">${left} ${plural(left, 'restant', 'restants')} aujourd'hui</span></h2>
+      <div class="chips">${(S.messages || []).map((m) => `<button class="chip" data-msg="${m.code}" ${left ? '' : 'disabled'}>${esc(m.text)}</button>`).join('')}</div></div>`;
+  }
+
   function screenFeed() {
-    if (!S.feed.length) return '<div class="card muted">Rien pour l\'instant. Les journées finies, records, séries et encouragements apparaîtront ici.</div>';
-    return `<div class="card list">${S.feed.map((e) => {
+    if (!S.feed.length) return messagesCard() + '<div class="card muted">Rien pour l\'instant. Les journées finies, records, séries, défis et messages apparaîtront ici.</div>';
+    return messagesCard() + `<div class="card list">${S.feed.map((e) => {
       const p = player(e.user_id);
       return `<div class="feed-item"><div class="dot sm" style="background:${p ? color(p) : 'var(--card2)'}">${esc(e.who.avatar)}</div><div style="flex:1;min-width:0">
       <div><b>${esc(e.who.pseudo)}</b> ${eventText(e)} <span class="tiny muted">· ${ago(e.at)}</span></div>
@@ -297,6 +324,9 @@
   }
 
   function bindFeed() {
+    document.querySelectorAll('[data-msg]').forEach((b) => {
+      b.onclick = async () => { b.disabled = true; const r = await api('send_message', { code: b.dataset.msg }); if (r.ok) toast('💬 Message envoyé'); };
+    });
     document.querySelectorAll('[data-react]').forEach((b) => {
       b.onclick = () => api('react', { event_id: parseInt(b.dataset.react, 10), emoji: b.dataset.emoji, on: !b.classList.contains('on') });
     });
@@ -334,7 +364,8 @@
     return `<div class="card"><h2>Les 30 derniers jours <span class="right">% de sa journée, chaque jour</span></h2>${chartSvg(v.chart)}</div>
       <div class="card"><h2>Carte de chaleur du groupe <span class="right">26 semaines</span></h2><div class="heat">${heat}</div>
         <div class="legend">journée finie par : <span class="hc"></span> personne <span class="hc l1"></span> 1 joueur <span class="hc l2"></span> plusieurs <span class="hc all"></span> tout le monde</div></div>
-      <div class="card list"><h2 style="padding-top:8px">Records</h2>${recs}</div>`;
+      <div class="card list"><h2 style="padding-top:8px">Records</h2>${recs}</div>
+      ${reportCard()}${badgesCard()}`;
   }
 
   // ---------------------------------------------------------------- account
@@ -373,7 +404,7 @@
 
   // -- profile (avatar button)
   function screenProfile() {
-    return profileForm(false) + `<div class="card"><h2>Mon groupe</h2>
+    return levelCard() + profileForm(false) + `<div class="card"><h2>Mon groupe</h2>
       <div>« ${esc(S.group.name)} » · code à donner à tes amis : <span class="code">${esc(S.group.code)}</span></div>
       <div><button class="btn small" id="g-leave">Quitter le groupe</button></div></div>` + accountCard();
   }
@@ -381,6 +412,323 @@
   function bindLeave() {
     const b = $('#g-leave');
     if (b) b.onclick = () => { if (confirm('Quitter le groupe ? Tes chiffres restent sur le serveur, tu pourras revenir avec le code.')) api('leave_group'); };
+  }
+
+  // ---------------------------------------------------------------- Défis (games.py)
+  const TYPE_ICON = { custom: '🎯', zero: '🧹', race: '🏁', boss: '🐉' };
+  const TYPE_NAME = { custom: 'Défi sur mesure', zero: 'Défi zéro retard', race: 'Course', boss: "Boss d'équipe" };
+  const METRIC = { points: 'points', days: 'journées finies', cards: 'cartes', zero: 'jours sans retard' };
+  const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  const today = () => (S.view ? S.view.today : new Date().toISOString().slice(0, 10));
+  const sunday = () => addDays(today(), (7 - new Date(today() + 'T12:00:00').getDay()) % 7);
+  const span = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5) + 1;
+  function challengeTitle(c) {
+    if (c.title) return c.title;
+    if (c.type === 'boss') return `Boss de ${fmt(c.target)} PV`;
+    if (c.type === 'race') return `Premier à ${fmt(c.target)} points`;
+    if (c.type === 'zero') return `${c.target} ${plural(c.target, 'jour', 'jours')} sans retard`;
+    return `${fmt(c.target)} ${METRIC[c.metric] || ''}`;
+  }
+  function when(c) {
+    if (c.status === 'upcoming') return `commence ${frDate(c.start)}`;
+    if (c.status === 'active') return c.days_left <= 1 ? 'dernier jour !' : `encore ${c.days_left} jours · jusqu'au ${frDate(c.end)}`;
+    if (c.status === 'won') return 'réussi 🎉';
+    if (c.status === 'lost') return 'raté';
+    return `fini le ${frDate(c.end)}`;
+  }
+
+  function walletCard() {
+    const me = gp(S.me);
+    if (!me) return '';
+    return `<div class="card"><div class="split"><div><div class="label">Tes points multijoueur</div>
+      <div class="num-big">${fmt(me.wallet)} <small class="small muted">pts</small></div></div>
+      <div style="text-align:right">${levelTag(S.me)}<div class="tiny muted">${me.level.next ? `${fmt(me.level.next - me.xp)} pts avant le titre suivant` : 'titre maximum !'}</div></div></div>
+      <div class="tiny muted">Tu les gagnes en faisant <b>ta</b> journée (mêmes points que le duel) et en réussissant des défis. Tout le monde commence avec 50 pts pour parier.</div></div>`;
+  }
+
+  function challengeCard(c) {
+    const head = `<h2>${TYPE_ICON[c.type]} ${esc(challengeTitle(c))} <span class="right">${when(c)}</span></h2>
+      <div class="tiny muted">${TYPE_NAME[c.type]}${c.solo ? ' perso' : ''} · lancé par ${pseudo(c.by)}${c.reward ? ` · +${c.reward} pts à qui réussit` : ''}${c.type === 'boss' ? ` · +${Math.round(c.target * 0.05)} pts chacun s'il tombe` : ''}${c.type === 'race' ? ` · +${Math.round(c.target * 0.2)} pts au gagnant` : ''}</div>`;
+    let body = '';
+    if (c.type === 'boss') {
+      const pct = 100 * c.hp_left / c.target;
+      body = `<div class="split"><div class="small">${c.status === 'won' ? '🐉 Vaincu !' : `<b>${fmt(c.hp_left)}</b> / ${fmt(c.target)} PV`}</div><div class="tiny muted">chaque point gagné = 1 coup</div></div>
+        ${bar(pct, 'var(--boss)', 'thick')}
+        <div class="row">${c.players.map((pl) => { const p = player(pl.id); return p ? `<span class="tiny">${dot(p, 'xs')} ${fmt(pl.value)} dégâts</span>` : ''; }).join('')}</div>`;
+    } else {
+      body = c.players.map((pl) => {
+        const p = player(pl.id);
+        if (!p) return '';
+        const won = c.type === 'race' ? (c.winners || []).includes(pl.id) : pl.done;
+        return `<div class="row" style="gap:10px;flex-wrap:nowrap">${dot(p, 'xs')}<div style="flex:1;min-width:0">${bar(100 * pl.value / c.target, color(p))}</div>
+          <div class="tiny" style="min-width:86px;text-align:right">${fmt(pl.value)} / ${fmt(c.target)} ${won ? '✅' : ''}</div></div>`;
+      }).join('');
+    }
+    const cancel = c.by === S.me && (c.status === 'upcoming' || (c.status === 'active' && c.created === today()))
+      ? `<div><button class="btn small" data-cancel="${c.id}">Annuler ce défi</button></div>` : '';
+    return `<div class="card ${c.type === 'boss' ? 'boss' : ''}">${head}${body}${cancel}</div>`;
+  }
+
+  function betText(b) {
+    const range = b.start === b.end ? `le ${frDate(b.start)}` : `du ${frDate(b.start)} au ${frDate(b.end)}`;
+    if (b.type === 'duel') return `<b>${pseudo(b.by)}</b> parie de faire plus de points que <b>${pseudo(b.opponent)}</b> ${range}`;
+    return `<b>${pseudo(b.by)}</b> parie de finir sa journée chaque jour ${range} (contre <b>${pseudo(b.opponent)}</b>)`;
+  }
+
+  function betCard(b) {
+    let foot = '';
+    if (b.status === 'pending') {
+      if (b.opponent === S.me) foot = `<div class="row"><button class="btn primary small" data-bet="${b.id}" data-yes="1">Accepter (${b.stake} pts)</button><button class="btn small" data-bet="${b.id}" data-yes="0">Refuser</button></div>`;
+      else if (b.by === S.me) foot = `<div class="row"><span class="tiny muted">En attente de ${pseudo(b.opponent)}…</span><button class="btn small" data-cancel="${b.id}">Annuler</button></div>`;
+      else foot = `<div class="tiny muted">En attente de ${pseudo(b.opponent)}</div>`;
+    } else if (b.status === 'active' || b.status === 'settled') {
+      const sc = b.score || {};
+      const score = b.type === 'duel' ? `${pseudo(b.by)} ${sc[b.by] || 0} pts · ${pseudo(b.opponent)} ${sc[b.opponent] || 0} pts`
+        : `${sc.done || 0} / ${sc.days || 0} journées finies`;
+      const result = b.status === 'settled' ? (b.winner ? ` · 🏆 ${pseudo(b.winner)} gagne ${b.stake} pts` : ' · égalité, personne ne perd') : '';
+      foot = `<div class="tiny">${score}${result}</div>`;
+    } else {
+      foot = `<div class="tiny muted">${{ declined: 'Refusé', canceled: 'Annulé', expired: 'Pas accepté à temps' }[b.status]}</div>`;
+    }
+    return `<div class="card"><h2>💰 Pari · ${b.stake} pts <span class="right">${b.status === 'active' ? 'en cours' : b.status === 'pending' ? 'proposé' : ''}</span></h2>
+      <div class="small">${betText(b)}</div>${foot}</div>`;
+  }
+
+  function defaultForm(kind) {
+    const n = Math.max(1, players().length);
+    const f = { kind, start: today(), end: sunday() === today() ? addDays(today(), 7) : sunday(), metric: 'days', target: '', solo: false, title: '',
+      betType: 'duel', opponent: (players().find((p) => !p.me) || {}).id || '', stake: 20 };
+    const days = span(f.start, f.end);
+    f.target = { custom: Math.max(1, days - 1), zero: Math.max(1, Math.ceil(days / 2)), race: 100, boss: n * days * 12 }[kind] || '';
+    if (kind === 'bet') { f.start = addDays(today(), 1); f.end = sunday() <= f.start ? addDays(f.start, 6) : sunday(); }
+    return f;
+  }
+
+  function formCard() {
+    if (!form) form = defaultForm('boss');
+    const f = form;
+    const opt = (v, l, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${l}</option>`;
+    const kinds = [['boss', "🐉 Boss d'équipe"], ['custom', '🎯 Défi sur mesure'], ['zero', '🧹 Zéro retard'], ['race', '🏁 Course'], ['bet', '💰 Pari']];
+    const dates = (endToo = true) => `<div class="row"><label>Du</label><input type="date" data-f="start" value="${f.start}">${endToo ? `<span class="tiny muted">au</span><input type="date" data-f="end" value="${f.end}">` : ''}</div>`;
+    const days = span(f.start, f.end);
+    let fields = '', help = '';
+    if (f.kind === 'boss') {
+      fields = `<div class="row"><label>Points de vie</label><input type="number" data-f="target" value="${f.target}" min="50" style="width:110px">
+        <button class="btn small" id="suggest">Suggérer</button></div>${dates()}`;
+      help = `Chaque point que vous gagnez (journée, régularité, zéro retard, rétention) enlève 1 PV. Une bonne journée ≈ 15 pts par joueur. Suggestion : ${fmt(players().length * days * 12)} PV pour ${days} jours.`;
+    } else if (f.kind === 'custom') {
+      const solo = f.metric === 'cards' || f.solo;
+      fields = `<div class="row"><label>Atteindre</label><input type="number" data-f="target" value="${f.target}" min="1" style="width:100px">
+        <select data-f="metric">${opt('days', 'journées finies', f.metric)}${opt('points', 'points', f.metric)}${opt('cards', 'cartes (juste moi)', f.metric)}</select></div>
+        ${dates()}<div class="row"><label>Pour</label><select data-f="solo" ${f.metric === 'cards' ? 'disabled' : ''}>${opt('false', 'tout le groupe', solo)}${opt('true', 'juste moi', solo)}</select></div>
+        <div class="row"><label>Nom (facultatif)</label><input data-f="title" maxlength="40" value="${esc(f.title)}" placeholder="Ex. : semaine de feu"></div>`;
+      help = f.metric === 'cards' ? 'Programmes différents : un objectif en cartes, c\'est seulement pour toi (pas de points à gagner).'
+        : `Chacun doit atteindre l'objectif. ${f.metric === 'days' ? `Il y a ${days} jours.` : `Une bonne journée ≈ 15 pts.`}`;
+    } else if (f.kind === 'zero') {
+      fields = `<div class="row"><label>Jours sans retard</label><input type="number" data-f="target" value="${f.target}" min="1" max="${days}" style="width:90px"><span class="tiny muted">sur ${days} jours</span></div>${dates()}`;
+      help = 'Un jour compte si tu finis ta journée et qu\'il ne reste aucune carte en retard. +3 pts par jour visé à qui réussit.';
+    } else if (f.kind === 'race') {
+      fields = `<div class="row"><label>Premier à</label><input type="number" data-f="target" value="${f.target}" min="20" style="width:100px"><span class="tiny muted">points</span></div>${dates(false)}`;
+      help = 'Les points comptent à partir du début. Le premier qui atteint le total gagne (30 jours max).';
+    } else {
+      const others = players().filter((p) => !p.me);
+      fields = `<div class="row"><label>Pari</label><select data-f="betType">${opt('duel', 'Je ferai plus de points que…', f.betType)}${opt('objectif', 'Je finirai ma journée chaque jour', f.betType)}</select></div>
+        <div class="row"><label>${f.betType === 'duel' ? 'Contre' : 'Qui parie contre moi'}</label><select data-f="opponent">${others.map((p) => opt(p.id, esc(p.pseudo), f.opponent)).join('')}</select></div>
+        <div class="row"><label>Mise</label><input type="number" data-f="stake" value="${f.stake}" min="5" max="200" style="width:90px"><span class="tiny muted">pts (tu as ${fmt((gp(S.me) || {}).wallet || 0)})</span></div>${dates()}`;
+      help = "L'autre doit accepter avant le début. Le gagnant prend la mise au perdant. Égalité : personne ne perd.";
+    }
+    return `<div class="card"><h2>Nouveau défi</h2>
+      <div class="chips">${kinds.map(([k, l]) => `<button class="chip ${f.kind === k ? 'on' : ''}" data-kind="${k}">${l}</button>`).join('')}</div>
+      ${fields}<div class="tiny muted">${help}</div>
+      <div><button class="btn primary" id="launch">${f.kind === 'bet' ? 'Proposer le pari' : 'Lancer le défi'}</button></div></div>`;
+  }
+
+  function screenChallenges() {
+    const g = G();
+    if (!g || !S.view) return '<div class="card muted">Chargement…</div>';
+    const live = (c) => ['active', 'upcoming'].includes(c.status) || (c.status === 'won' && c.end >= today());
+    const now = g.challenges.filter(live);
+    const past = g.challenges.filter((c) => !live(c)).slice(0, 6);
+    const bets = g.bets.filter((b) => ['pending', 'active'].includes(b.status) || (b.status === 'settled' && b.end >= addDays(today(), -3)));
+    const old = g.bets.filter((b) => !bets.includes(b)).slice(0, 5);
+    return walletCard()
+      + (now.length ? now.map(challengeCard).join('') : '<div class="card muted small">Aucun défi en cours. Lance un boss d\'équipe ou un défi juste en dessous 👇</div>')
+      + bets.map(betCard).join('')
+      + formCard()
+      + (past.length || old.length ? `<details class="card"><summary>Défis et paris terminés</summary>${past.map(challengeCard).join('')}${old.map(betCard).join('')}</details>` : '');
+  }
+
+  function bindChallenges() {
+    document.querySelectorAll('[data-kind]').forEach((b) => { b.onclick = () => { form = defaultForm(b.dataset.kind); render(); }; });
+    document.querySelectorAll('[data-f]').forEach((el) => {
+      const set = () => {
+        const k = el.dataset.f;
+        form[k] = k === 'solo' ? el.value === 'true' : el.value;
+        if (k === 'metric' || k === 'betType' || ((k === 'start' || k === 'end') && form.kind === 'zero')) render();
+      };
+      el.oninput = set; el.onchange = set;
+    });
+    const sug = $('#suggest');
+    if (sug) sug.onclick = () => { form.target = players().length * span(form.start, form.end) * 12; render(); };
+    const go = $('#launch');
+    if (go) go.onclick = async () => {
+      const f = form;
+      go.disabled = true;
+      let r;
+      if (f.kind === 'bet') r = await api('create_bet', { type: f.betType, opponent: f.opponent, stake: f.stake, start: f.start, end: f.end });
+      else r = await api('create_challenge', { type: f.kind, metric: f.metric, target: f.target, start: f.start, end: f.kind === 'race' ? null : f.end,
+        solo: f.metric === 'cards' || f.solo, title: f.title });
+      if (r.ok) { toast(f.kind === 'bet' ? '💰 Pari proposé' : '🚀 Défi lancé !'); form = null; render(); }
+    };
+    document.querySelectorAll('[data-cancel]').forEach((b) => {
+      b.onclick = () => { if (confirm('Annuler ?')) api('cancel', { ref: parseInt(b.dataset.cancel, 10) }); };
+    });
+    document.querySelectorAll('[data-bet]').forEach((b) => {
+      b.onclick = async () => { b.disabled = true; const r = await api('answer_bet', { ref: parseInt(b.dataset.bet, 10), accept: b.dataset.yes === '1' }); if (r.ok) toast(b.dataset.yes === '1' ? '🤝 Pari accepté' : 'Pari refusé'); };
+    });
+  }
+
+  // ---------------------------------------------------------------- Pomodoro
+  function pomoPhase(p, nowMs) {
+    const elapsed = (nowMs - new Date(p.start).getTime()) / 1000, cycle = (p.work + p.rest) * 60;
+    if (elapsed < 0) return { phase: 'work', round: 1, left: -elapsed };
+    if (elapsed >= cycle * p.rounds) return { phase: 'over', round: p.rounds, left: 0 };
+    const n = Math.floor(elapsed / cycle), into = elapsed - n * cycle;
+    return into < p.work * 60 ? { phase: 'work', round: n + 1, left: p.work * 60 - into } : { phase: 'rest', round: n + 1, left: cycle - into };
+  }
+  const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+  function pomodoroCard() {
+    const g = G();
+    if (!g) return '';
+    const p = g.pomodoro;
+    if (!p) {
+      return `<div class="card"><div class="split"><div><h2>🍅 Pomodoro ensemble</h2><div class="tiny muted">Le même minuteur pour tout le groupe, même à distance.</div></div>
+        <div class="row" style="flex-wrap:nowrap"><select id="pomo-kind" aria-label="Durée">
+          <option value="25,5,4">25 min × 4</option><option value="50,10,2">50 min × 2</option><option value="45,15,3">45 min × 3</option></select>
+        <button class="btn primary small" id="pomo-start">Lancer</button></div></div></div>`;
+    }
+    const ph = pomoPhase(p, Date.now());
+    const inIt = p.players.includes(S.me);
+    const who = p.players.map((id) => player(id)).filter(Boolean).map((x) => dot(x, 'xs')).join('');
+    return `<div class="card pomo ${ph.phase}"><div class="split"><div><h2>🍅 Pomodoro de ${pseudo(p.by)}</h2>
+        <div class="tiny muted" id="pomo-phase">${ph.phase === 'work' ? 'Travail' : ph.phase === 'rest' ? 'Pause' : 'Terminé'} · tour ${ph.round}/${p.rounds}</div></div>
+        <div class="num-big" id="pomo-clock">${clock(ph.left)}</div></div>
+      <div class="split"><div class="row" style="gap:4px">${who}</div><div class="row">
+        ${inIt ? '' : `<button class="btn primary small" data-pomo-join="${p.id}">Rejoindre</button>`}
+        ${p.by === S.me ? `<button class="btn small" data-pomo-stop="${p.id}">Arrêter</button>` : ''}</div></div></div>`;
+  }
+
+  function bindPomodoro() {
+    const st = $('#pomo-start');
+    if (st) st.onclick = async () => {
+      const [work, rest, rounds] = $('#pomo-kind').value.split(',').map(Number);
+      st.disabled = true;
+      const r = await api('start_pomodoro', { work, rest, rounds });
+      if (r.ok) toast('🍅 Pomodoro lancé : ton groupe le voit');
+    };
+    document.querySelectorAll('[data-pomo-join]').forEach((b) => { b.onclick = () => api('join_pomodoro', { ref: parseInt(b.dataset.pomoJoin, 10) }); });
+    document.querySelectorAll('[data-pomo-stop]').forEach((b) => { b.onclick = () => { if (confirm('Arrêter le pomodoro pour tout le monde ?')) api('stop_pomodoro', { ref: parseInt(b.dataset.pomoStop, 10) }); }; });
+  }
+
+  function beep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [0, 0.25].forEach((t) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = 880; g.gain.value = 0.08;
+        o.connect(g); g.connect(ctx.destination); o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.15); });
+    } catch (e) { /* no sound: fine */ }
+  }
+
+  let lastPhase = null;
+  setInterval(() => {
+    const p = G() && G().pomodoro;
+    if (!p) { lastPhase = null; return; }
+    const ph = pomoPhase(p, Date.now());
+    const c = $('#pomo-clock'), l = $('#pomo-phase');
+    if (c) c.textContent = clock(ph.left);
+    if (l) l.textContent = `${ph.phase === 'work' ? 'Travail' : ph.phase === 'rest' ? 'Pause' : 'Terminé'} · tour ${ph.round}/${p.rounds}`;
+    const key = `${p.id}:${ph.phase}:${ph.round}`;
+    if (lastPhase && key !== lastPhase && p.players.includes(S.me)) {
+      beep();
+      toast(ph.phase === 'rest' ? `☕ Pause ! ${p.rest} min` : ph.phase === 'work' ? `📚 Au travail ! Tour ${ph.round}/${p.rounds}` : '🍅 Pomodoro terminé, bravo !');
+      if (ph.phase === 'over') poll();
+    }
+    lastPhase = key;
+  }, 1000);
+
+  // live while the window is open: pomodoro, messages, paris
+  async function poll() {
+    if (!S.group || document.hidden) return;
+    await ready;
+    const res = await callPy('poll', {});
+    if (res && res.snapshot) { S = res.snapshot; softRender(); }
+  }
+  setInterval(poll, 30000);
+
+  // ---------------------------------------------------------------- Saison (Classement)
+  function seasonCard() {
+    const g = G();
+    if (!g) return '';
+    const s = g.season;
+    const rows = s.ranking.map((r, i) => { const p = player(r.id); return p ? `<div class="rank-row"><div class="rank ${i === 0 ? 'first' : ''}">${i === 0 && r.points ? '👑' : i + 1}</div>${dot(p, 'sm')}
+      <div class="body"><div class="split"><div>${name({ ...p, live: false })}</div><div class="num" style="font-size:15px">${fmt(r.points)} pts</div></div>
+      <div class="tiny muted">${r.finished} ${plural(r.finished, 'journée finie', 'journées finies')} ce mois-ci</div></div></div>` : ''; }).join('');
+    const hall = players().map((p) => ({ p, t: (gp(p.id) || {}).trophies || [] })).filter((x) => x.t.length);
+    return `<div class="card list"><h2 style="padding-top:8px">Saison de ${esc(s.name)} <span class="right">encore ${s.days_left} ${plural(s.days_left, 'jour', 'jours')}</span></h2>${rows}
+      <div class="tiny muted" style="padding:8px 0">À la fin du mois : 🥇🥈🥉 pour le podium, 📅 au plus régulier, 🧠 à la meilleure rétention. Le 🥇 débloque le cadre « Champion·ne ».</div></div>
+      ${hall.length ? `<div class="card"><h2>Trophées</h2>${hall.map((x) => `<div class="row">${dot(x.p, 'xs')}<span class="trophies">${x.t.map((t) => `<span title="${esc(t.label)}">${t.medal}</span>`).join('')}</span></div>`).join('')}</div>` : ''}`;
+  }
+
+  // ---------------------------------------------------------------- Bilan mensuel + badges (Stats)
+  function reportCard() {
+    const g = G();
+    if (!g || !g.months.length) return '';
+    const key = g.reports[reportMonth] ? reportMonth : g.months[g.months.length - 1];
+    const r = g.reports[key];
+    const who = (id) => (id ? pseudo(id) : '—');
+    const rows = r.players.map((x) => { const p = player(x.id); return p ? `<tr><td>${dot(p, 'xs')} ${esc(p.pseudo)}</td><td>${fmt(x.points)}</td><td>${x.finished}/${r.days}</td>
+      <td>${fmt(x.cards)}</td><td>${fmt(x.minutes / 60)} h</td><td>${x.retention == null ? '—' : x.retention + ' %'}</td></tr>` : ''; }).join('');
+    return `<div class="card"><h2>Bilan de ${esc(r.name)} <span class="right">${r.complete ? 'mois terminé' : 'en cours'}</span></h2>
+      ${g.months.length > 1 ? `<div class="chips">${g.months.map((m) => `<button class="chip ${m === key ? 'on' : ''}" data-month="${m}">${esc(g.reports[m].name)}</button>`).join('')}</div>` : ''}
+      <div class="grid g4">
+        <div class="well"><div class="num">${fmt(r.cards)}</div><div class="label">cartes ensemble</div></div>
+        <div class="well"><div class="num">${fmt(r.minutes / 60)} h</div><div class="label">d'étude</div></div>
+        <div class="well"><div class="num">${r.all_done_days}</div><div class="label">jours tous au rendez-vous</div></div>
+        <div class="well"><div class="num">${r.challenges_won}</div><div class="label">défis réussis</div></div></div>
+      <div class="small">⭐ Joueur du mois : <b>${who(r.mvp)}</b> · 📅 Plus régulier : <b>${who(r.most_regular)}</b> · 🧠 Meilleure rétention : <b>${who(r.best_retention)}</b></div>
+      <table class="tbl"><thead><tr><th></th><th>Points</th><th>Jours finis</th><th>Cartes</th><th>Temps</th><th>Rétention</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+
+  function badgesCard() {
+    const g = G();
+    if (!g) return '';
+    return `<div class="card"><h2>Badges du groupe <span class="right">gagnés ensemble</span></h2><div class="grid g2" style="gap:8px">${g.badges.map((b) => `
+      <div class="well badge-cell ${b.level ? '' : 'locked'}"><div class="split"><div class="num" style="font-size:15px">${b.icon} ${esc(b.name)}</div>
+        <div class="stars" aria-label="niveau ${b.level} sur ${b.tiers.length}">${'★'.repeat(b.level)}<span class="muted">${'☆'.repeat(b.tiers.length - b.level)}</span></div></div>
+        <div class="tiny muted">${fmt(b.value)} ${esc(b.desc)}${b.next ? ` · prochain : ${fmt(b.next)}` : ' · niveau max !'}</div>
+        ${bar(b.pct, 'var(--done)')}</div>`).join('')}</div></div>`;
+  }
+
+  function bindStats() {
+    document.querySelectorAll('[data-month]').forEach((b) => { b.onclick = () => { reportMonth = b.dataset.month; render(); }; });
+  }
+
+  // ---------------------------------------------------------------- Titre, cadres, trophées (profil)
+  function levelCard() {
+    const me = gp(S.me);
+    if (!me) return '';
+    const lv = me.level;
+    return `<div class="card"><div class="split"><div><div class="label">Ton titre</div><div class="num-big" style="font-size:22px">${lv.icon} ${esc(lv.title)}</div></div>
+        <div style="text-align:right"><div class="num">${fmt(me.xp)} pts</div><div class="tiny muted">gagnés depuis le début du groupe</div></div></div>
+      ${lv.next ? `${bar(lv.pct, 'var(--me)')}<div class="tiny muted">${fmt(lv.next - me.xp)} pts avant le titre suivant</div>` : '<div class="tiny">Titre maximum 👑</div>'}
+      <div class="label">Cadre de ton avatar</div>
+      <div class="chips">${me.frames.map((f) => `<button class="chip frame-chip ${f.id === me.frame ? 'on' : ''}" data-frame="${f.id}" ${f.open ? '' : 'disabled'}
+        title="${f.open ? '' : f.need ? `Débloqué à ${fmt(f.need)} pts` : 'Gagne une saison'}"><span class="dot xs frame-${f.id}" style="background:var(--me)">${esc(S.profile.avatar)}</span> ${esc(f.name)}${f.open ? '' : ' 🔒'}</button>`).join('')}</div>
+      ${me.trophies.length ? `<div class="label">Tes trophées</div><div>${me.trophies.map((t) => `<div class="small">${t.medal} ${esc(t.label)}</div>`).join('')}</div>` : '<div class="tiny muted">Pas encore de trophée : ils arrivent à la fin de chaque saison (mois).</div>'}</div>`;
+  }
+
+  function bindFrames() {
+    document.querySelectorAll('[data-frame]').forEach((b) => { b.onclick = async () => { const r = await api('set_frame', { frame: b.dataset.frame }); if (r.ok) toast('🖼️ Cadre changé'); }; });
   }
 
   render();

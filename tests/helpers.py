@@ -15,7 +15,7 @@ def load():
         pkg.__path__ = [PKG]
         sys.modules["multijoueur"] = pkg
     mods = {}
-    for name in ("server", "metrics", "group", "api", "page", "updater"):
+    for name in ("server", "metrics", "group", "games", "api", "page", "updater"):
         full = f"multijoueur.{name}"
         if full not in sys.modules:
             spec = importlib.util.spec_from_file_location(full, os.path.join(PKG, f"{name}.py"))

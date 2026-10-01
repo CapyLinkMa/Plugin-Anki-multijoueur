@@ -11,6 +11,7 @@ import json
 import os
 import re
 
+from . import games
 from . import group
 from . import metrics
 from .server import ServerError
@@ -32,7 +33,8 @@ class MultiAPI:
         self.run_bg = run_bg or (lambda task, done: done(task()))
         self.now = now or (lambda: datetime.datetime.now(datetime.timezone.utc))
         self.store = self._load()
-        self.cache = {"profile": None, "group": None, "members": [], "days": [], "events": [], "reactions": []}
+        self.cache = {"profile": None, "group": None, "members": [], "days": [], "events": [], "reactions": [],
+                      "game_events": []}
         self.error = None
         self.syncing = False
         self.listeners = []   # called with the new snapshot after each background sync
@@ -117,7 +119,7 @@ class MultiAPI:
         srv = self.server
         profile = srv.my_profile()
         out = {"profile": profile, "group": None, "members": [], "days": [], "events": [], "reactions": [],
-               "pushed": False, "sent": []}
+               "game_events": [], "pushed": False, "sent": []}
         if profile is None:
             return out
         if days:
@@ -138,9 +140,20 @@ class MultiAPI:
                         srv.post_event(profile["group_id"], kind, dict(payload, day=day))
                         out["sent"].append(key)
                         sent.add(key)
-            out["events"] = srv.events()
-            out["reactions"] = srv.reactions([e["id"] for e in out["events"]])
+            out.update(self._fetch_social(out["group"]))
         return out
+
+    def _fetch_social(self, grp):
+        """Feed, reactions and the game events (défis, paris, pomodoros...)."""
+        srv = self.server
+        events = srv.events()
+        return {"events": events, "reactions": srv.reactions([e["id"] for e in events]),
+                "game_events": srv.game_events(games.GAME_KINDS, self._since(grp))}
+
+    @staticmethod
+    def _since(grp):
+        start = games.local_day((grp or {}).get("created_at")) if (grp or {}).get("created_at") else None
+        return ((start or datetime.date.today()) - datetime.timedelta(days=1)).isoformat()
 
     def sync(self, on_done=None):
         """Collect now, send and fetch in the background."""
@@ -163,7 +176,7 @@ class MultiAPI:
             if result["ok"]:
                 data = result["data"]
                 self.error = None
-                for key in ("profile", "group", "members", "days", "events", "reactions"):
+                for key in ("profile", "group", "members", "days", "events", "reactions", "game_events"):
                     self.cache[key] = data[key]
                 if data["pushed"]:
                     self.store["first_sync_done"] = True
@@ -178,6 +191,38 @@ class MultiAPI:
                 listener(snap)
             if on_done:
                 on_done(snap)
+
+        self.run_bg(task, done)
+        return True
+
+    def poll(self):
+        """Light refresh while the window is open (pomodoro, messages, paris):
+        members, feed and game events only, nothing collected from Anki."""
+        if self.syncing or not (self.cache.get("profile") or {}).get("group_id"):
+            return False
+        self.syncing = True
+
+        def task():
+            try:
+                srv = self.server
+                grp = srv.group()
+                out = {"group": grp, "members": srv.members() if grp else []}
+                if grp:
+                    out.update(self._fetch_social(grp))
+                return {"ok": True, "data": out}
+            except ServerError as exc:
+                return {"ok": False, "error": str(exc)}
+
+        def done(result):
+            self.syncing = False
+            if result["ok"]:
+                self.error = None
+                self.cache.update(result["data"])
+            else:
+                self.error = result["error"]
+            snap = self.snapshot()
+            for listener in list(self.listeners):
+                listener(snap)
 
         self.run_bg(task, done)
         return True
@@ -214,6 +259,7 @@ class MultiAPI:
             entry = reactions.setdefault(r["event_id"], {})
             who = entry.setdefault(REACTIONS.get(r["emoji"], r["emoji"]), [])
             who.append(names.get(r["user_id"], {}).get("pseudo", "?"))
+        hidden = set(games.HIDDEN_IN_FEED)
         feed = [{"id": e["id"], "kind": e["kind"], "payload": e.get("payload") or {}, "at": e["created_at"],
                  "user_id": e["user_id"],
                  "who": names.get(e["user_id"], {"pseudo": "Ancien membre", "avatar": "👤"}),
@@ -222,7 +268,12 @@ class MultiAPI:
                  "reactions": reactions.get(e["id"], {}),
                  "my_reactions": [REACTIONS.get(r["emoji"], r["emoji"]) for r in c["reactions"]
                                   if r["event_id"] == e["id"] and r["user_id"] == me]}
-                for e in c["events"]]
+                for e in c["events"] if e["kind"] not in hidden]
+        game = None
+        if view:
+            start = games.local_day(c["group"].get("created_at")) if c["group"].get("created_at") else None
+            game = games.build(c["members"], c["days"], c.get("game_events") or [], today, me,
+                               start.isoformat() if start else None, self.now())
         if view:
             for p in view["players"]:
                 # "Féliciter" reacts to today's goal event; "Encourager" once a day
@@ -233,7 +284,10 @@ class MultiAPI:
                 "account": {"username": self.server.username, "secured": bool(self.server.username)},
                 "error": self.error, "syncing": self.syncing, "last_sync": self.store.get("last_sync"),
                 "avatars": AVATARS, "emojis": list(REACTIONS.values()), "ready": bool(self.store.get("last_sync")),
-                "update": self.update}
+                "update": self.update, "game": game,
+                "messages": [{"code": k, "text": t} for k, t in games.MESSAGES],
+                "messages_left": max(0, games.MESSAGES_PER_DAY - self._sent_today("msg")),
+                "now": self.now().isoformat()}
 
     # -- the window's requests ---------------------------------------------------------------------
     def call(self, name, payload=None):
@@ -288,7 +342,7 @@ class MultiAPI:
 
     def do_leave_group(self):
         self.server.leave_group()
-        for key in ("group", "members", "days", "events", "reactions"):
+        for key in ("group", "members", "days", "events", "reactions", "game_events"):
             self.cache[key] = None if key == "group" else []
         self.sync()
         return {}
@@ -340,4 +394,139 @@ class MultiAPI:
             return {"ok": False, "error": "Réaction inconnue."}
         self.server.react(event_id, REACTION_CODES[emoji], bool(on))
         self.sync()
+        return {}
+
+    # -- défis, paris, pomodoro, messages, cadre (all posted as group events: see games.py) -------------
+    def _group_id(self):
+        gid = (self.cache.get("profile") or {}).get("group_id")
+        if not gid:
+            raise ServerError("Rejoins d'abord un groupe.")
+        return gid
+
+    def _post(self, kind, payload):
+        self.server.post_event(self._group_id(), kind, payload)
+        self.poll() or self.sync()
+
+    def _sent_today(self, kind):
+        prefix = f"{kind}:{self.today()}:"
+        return sum(1 for k in self.store["sent"] if k.startswith(prefix))
+
+    def _game(self):
+        return self.snapshot().get("game") or {}
+
+    def _my_events(self, ref, kinds):
+        return [e for e in self.cache.get("game_events") or []
+                if e["kind"] in kinds and (e.get("payload") or {}).get("ref") == ref]
+
+    def pomodoro_alert(self):
+        """For Anki's own little message when the window is closed: the text
+        to show when my shared pomodoro changes phase, else None."""
+        try:
+            g = games.Game(self.cache.get("members") or [], [], self.cache.get("game_events") or [],
+                           datetime.date.fromisoformat(self.today()), self.server.user_id, now=self.now())
+            pomo = next((p for p in g.pomodoros() if p["active"] and self.server.user_id in p["players"]), None)
+        except Exception:
+            return None
+        if not pomo:
+            self._pomo_phase = None
+            return None
+        phase, rnd, _left = games.pomo_phase(pomo, self.now())
+        key = (pomo["id"], phase, rnd)
+        old, self._pomo_phase = getattr(self, "_pomo_phase", None), key
+        if old is None or old == key:
+            return None
+        if phase == "rest":
+            return f"🍅 Pause ! {pomo['rest']} min"
+        if phase == "work":
+            return f"📚 Au travail ! Tour {rnd}/{pomo['rounds']}"
+        return "🍅 Pomodoro terminé, bravo !"
+
+    def do_poll(self):
+        return {"started": self.poll()}
+
+    def do_create_challenge(self, **payload):
+        clean, err = games.check_challenge(payload, datetime.date.fromisoformat(self.today()))
+        if err:
+            return {"ok": False, "error": err}
+        running = [c for c in self._game().get("challenges", []) if c["status"] in ("active", "upcoming")]
+        if len(running) >= games.MAX_ACTIVE:
+            return {"ok": False, "error": f"Déjà {games.MAX_ACTIVE} défis en cours : attends qu'un se termine."}
+        self._post("challenge", clean)
+        return {}
+
+    def do_create_bet(self, **payload):
+        me = self.server.user_id
+        clean, err = games.check_bet(payload, datetime.date.fromisoformat(self.today()), me,
+                                     [m["id"] for m in self.cache["members"]])
+        if err:
+            return {"ok": False, "error": err}
+        players = self._game().get("players", {})
+        for uid, who in ((me, "Tu n'as"), (clean["opponent"], "Ton adversaire n'a")):
+            if (players.get(uid) or {}).get("wallet", 0) < clean["stake"]:
+                return {"ok": False, "error": f"{who} pas assez de points pour cette mise."}
+        self._post("bet", clean)
+        return {}
+
+    def do_answer_bet(self, ref, accept):
+        bet = next((b for b in self._game().get("bets", []) if b["id"] == ref), None)
+        if not bet or bet["opponent"] != self.server.user_id or bet["status"] != "pending":
+            return {"ok": False, "error": "Ce pari n'attend plus ta réponse."}
+        if accept and (self._game()["players"].get(self.server.user_id) or {}).get("wallet", 0) < bet["stake"]:
+            return {"ok": False, "error": "Tu n'as pas assez de points pour cette mise."}
+        self._post("bet_accept" if accept else "bet_decline", {"ref": ref})
+        return {}
+
+    def do_cancel(self, ref):
+        g = self._game()
+        mine = [c for c in g.get("challenges", []) if c["id"] == ref and c["by"] == self.server.user_id
+                and (c["status"] == "upcoming" or c["created"] == self.today())]
+        mine += [b for b in g.get("bets", []) if b["id"] == ref and b["by"] == self.server.user_id
+                 and b["status"] == "pending"]
+        if not mine:
+            return {"ok": False, "error": "On ne peut plus l'annuler."}
+        self._post("cancel", {"ref": ref})
+        return {}
+
+    def do_start_pomodoro(self, work=25, rest=5, rounds=4):
+        clean, err = games.check_pomo({"work": work, "rest": rest, "rounds": rounds})
+        if err:
+            return {"ok": False, "error": err}
+        if self._game().get("pomodoro"):
+            return {"ok": False, "error": "Un pomodoro est déjà en cours : rejoins-le."}
+        self._post("pomo", clean)
+        self.set_studying()
+        return {}
+
+    def do_join_pomodoro(self, ref):
+        pomo = self._game().get("pomodoro")
+        if not pomo or pomo["id"] != ref:
+            return {"ok": False, "error": "Ce pomodoro est terminé."}
+        if self.server.user_id in pomo["players"]:
+            return {}
+        self._post("pomo_join", {"ref": ref})
+        self.set_studying()
+        return {}
+
+    def do_stop_pomodoro(self, ref):
+        pomo = self._game().get("pomodoro")
+        if not pomo or pomo["id"] != ref or pomo["by"] != self.server.user_id:
+            return {"ok": False, "error": "Seul celui qui l'a lancé peut l'arrêter."}
+        self._post("pomo_stop", {"ref": ref})
+        return {}
+
+    def do_send_message(self, code):
+        if code not in games.MESSAGE_TEXT:
+            return {"ok": False, "error": "Message inconnu."}
+        if self._sent_today("msg") >= games.MESSAGES_PER_DAY:
+            return {"ok": False, "error": "Assez de messages pour aujourd'hui 🙂"}
+        self.store["sent"].append(f"msg:{self.today()}:{len(self.store['sent'])}")
+        self._save()
+        self._post("msg", {"code": code})
+        return {}
+
+    def do_set_frame(self, frame):
+        me = (self._game().get("players") or {}).get(self.server.user_id) or {}
+        if not any(f["id"] == frame and f["open"] for f in me.get("frames", [])):
+            return {"ok": False, "error": "Ce cadre n'est pas encore débloqué."}
+        self._post("frame", {"frame": frame})
         return {}

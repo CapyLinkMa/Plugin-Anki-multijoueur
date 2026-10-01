@@ -1,5 +1,5 @@
 """Opens the group window in a normal browser with a fake server and two
-fake players (nothing goes online): python tools/dev_server.py [--port=8790] [--empty] [--update]"""
+fake players (nothing goes online): python tools/dev_server.py [--port=8790] [--empty] [--update] [--pomo]"""
 import datetime
 import json
 import os
@@ -43,6 +43,17 @@ if "--empty" not in sys.argv:
     friend.call("join_group", {"code": code})
     friend.server.set_status("study")
     friend.sync()
+    me.sync()
+    # a few défis, a bet and messages to look at
+    t = today.isoformat()
+    sun = (today + datetime.timedelta(days=(6 - today.weekday()) or 7)).isoformat()
+    me.call("create_challenge", {"type": "boss", "target": 400, "start": t, "end": sun})
+    friend.sync()
+    friend.call("create_challenge", {"type": "zero", "target": 3, "start": t, "end": sun})
+    friend.call("create_bet", {"type": "duel", "opponent": me.server.user_id, "stake": 10, "start": t, "end": sun})
+    friend.call("send_message", {"code": "pomo"})
+    if "--pomo" in sys.argv:
+        friend.call("start_pomodoro", {"work": 25, "rest": 5, "rounds": 4})
     me.sync()
 else:
     me.collect = lambda: []

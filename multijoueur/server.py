@@ -215,7 +215,7 @@ class Server:
                          prefer="resolution=merge-duplicates")
 
     def group(self):
-        rows = self.request("GET", "/rest/v1/groups?select=id,code,name")
+        rows = self.request("GET", "/rest/v1/groups?select=id,code,name,created_at")
         return rows[0] if rows else None
 
     def members(self):
@@ -226,6 +226,11 @@ class Server:
 
     def events(self, limit=60):
         return self.request("GET", f"/rest/v1/events?select=*&order=id.desc&limit={int(limit)}") or []
+
+    def game_events(self, kinds, since_iso, limit=2000):
+        """The défis, paris, pomodoros… since the group started, oldest first."""
+        return self.request("GET", f"/rest/v1/events?select=*&kind=in.({','.join(kinds)})"
+                                   f"&created_at=gte.{since_iso}&order=id.asc&limit={int(limit)}") or []
 
     def reactions(self, event_ids):
         if not event_ids:

@@ -33,7 +33,7 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
   « ta journée », tes points du jour, série + objectif commun) · Classement · Stats · Activité ; le profil
   derrière le bouton avatar en haut. Une couleur par joueur partout : toi = ambre, les autres = bleu puis
   d'autres teintes. Polices Sora (titres) + DM Sans (texte), avec repli système hors ligne.
-  Un onglet « Défis » viendra avec le boss d'équipe, la course et les paris.
+  Onglet « Défis » ajouté en v4 (5 onglets).
 - **Objectif automatique et points** (2026-10-01, proposé par Xyroob qui a beaucoup plus de cartes) :
   l'objectif du jour = ce qu'Anki demande (cartes distinctes faites + encore dues, limites des paquets
   comprises), retenu chaque jour dans `user_files/state.json` (`targets`). Le serveur ne garde que `cards`
@@ -44,6 +44,18 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
 - **Mises à jour depuis GitHub** (`updater.py`) : au démarrage, Anki compare `multijoueur/version.json`
   au GitHub (`depot_github` dans config.json) et propose d'installer (une fois par version, puis bannière
   dans la fenêtre ; aussi Outils → « chercher une mise à jour »). `user_files/` et `meta.json` sont gardés.
+- **Défis, paris, saisons, badges, points multijoueur, pomodoro, messages** (v4, 2026-10-01, `games.py`) :
+  tout passe par la table `events` (genre + JSON), **sans changer le schéma** ; les résultats ne sont jamais
+  stockés, chaque ordinateur les recalcule à partir des `days` et des événements (mêmes chiffres partout).
+  Genres : `challenge`, `bet`, `bet_accept`, `bet_decline`, `cancel`, `pomo`, `pomo_join`, `pomo_stop`,
+  `frame`, `msg`. Équité : défis de groupe et paris en points (`group.day_points`) ou journées finies ;
+  un objectif en cartes seulement pour un défi perso (« juste moi », sans récompense).
+  Récompenses proportionnelles à l'objectif (`games.REWARD`) et au plus 4 défis en même temps
+  (sinon ignorés) : pas de « farm ». Points multijoueur = points des journées depuis la création du groupe
+  + défis réussis (→ titres et cadres, ne baissent jamais) ; porte-monnaie des paris = 50 de départ + ça
+  ± paris. Saison = mois (points des journées) ; à la fin : 🥇🥈🥉, 📅 plus régulier, 🧠 meilleure rétention ;
+  un 🥇 débloque le cadre « Champion·ne ». La fenêtre se rafraîchit seule toutes les 30 s (`api.poll`,
+  sans lire Anki) ; l'alerte du pomodoro s'affiche aussi dans Anki fenêtre fermée.
 
 ## Travailler à deux sur ce dépôt
 - Avant de commencer : `git pull`. En finissant une partie : commit clair en français + `git push`.
@@ -58,16 +70,15 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
 28 graphique, 29 carte de chaleur.
 v2 (Xyroob) : objectif automatique, points équitables, mises à jour depuis GitHub.
 v3 (Xyroob) : nouvelle interface, 17 encourager d'un clic (+ « Féliciter » = 👏 sur sa journée finie).
+v4 (CapyLinkMa) : 6 bilan mensuel, 8 défi sur mesure, 9 course, 11 zéro retard, 12 paris, 13 saisons,
+14 boss d'équipe, 22 pomodoro synchronisé, 23 messages courts, 25 badges de groupe, 26 points/titres/cadres,
+27 trophées de saison.
 
 ## Reste à faire (choisi)
-6 bilan mensuel, 9 course à l'objectif, 12 paris amicaux, 14 boss d'équipe (onglet « Défis » à ajouter),
-8 défi sur mesure, 11 défi zéro retard, 13 saisons, 22 pomodoro synchronisé, 23 messages courts,
-25 badges de groupe, 26 points multijoueur, 27 trophées de saison.
+Tout ce qui a été choisi est fait. Idées non choisies : 4, 10, 18, 30, et 31-33 (pont vers les casinos).
 
 ## En cours
-- CapyLinkMa (Claude, 2026-10-01) : TOUT le « Reste à faire » (onglet Défis : défi sur mesure, zéro retard,
-  course, boss d'équipe, paris ; saisons + trophées ; bilan mensuel ; badges de groupe ; points/titres/cadres ;
-  pomodoro ; messages). Merci de ne pas toucher à ces parties en attendant le push.
+- (personne)
 
 ## Pour Claude
 - Plugin Anki (Python 3.13, Qt6 via `aqt`). Pas de pip dans Anki : seulement la bibliothèque

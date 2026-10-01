@@ -117,3 +117,33 @@ svg text { fill: var(--muted); font-size: 10px; }
 .update { display: flex; gap: 12px; align-items: center; justify-content: space-between; background: #1d2f22; border: 1px solid #2f6b44; color: #d6ffe4; border-radius: 12px; padding: 10px 14px; }
 .code { font: 700 18px/1 ui-monospace, Menlo, monospace; letter-spacing: 3px; color: var(--me); }
 #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--card2); border: 1px solid var(--line); padding: 10px 16px; border-radius: 12px; box-shadow: 0 6px 24px #0008; }
+
+/* v4: défis, pomodoro, saison, badges, titres et cadres */
+.tabs { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 480px) { .tab { font-size: 12px; } }
+.dot.xs { width: 24px; height: 24px; font-size: 13px; display: inline-flex; vertical-align: middle; }
+.lvl { font-size: 11px; color: var(--muted); background: var(--well); border-radius: 99px; padding: 1px 7px; white-space: nowrap; font-weight: 500; }
+.card.boss { border-color: #5a2a33; background: linear-gradient(180deg, #2a1820 0%, var(--card) 70%); }
+.card.pomo.work { border-color: #6b3d2a; }
+.card.pomo.rest { border-color: #2f6b44; }
+#pomo-clock { font-variant-numeric: tabular-nums; font-size: 30px; }
+.bubble { display: inline-block; background: var(--card2); border: 1px solid var(--line); border-radius: 12px 12px 12px 4px; padding: 3px 10px; }
+.trophies { font-size: 18px; letter-spacing: 2px; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tbl th { color: var(--muted); font-weight: 500; text-align: right; padding: 4px; }
+.tbl td { text-align: right; padding: 5px 4px; border-top: 1px solid var(--line); white-space: nowrap; }
+.tbl td:first-child, .tbl th:first-child { text-align: left; }
+.badge-cell .stars { color: var(--me); font-size: 13px; letter-spacing: 1px; }
+.badge-cell.locked { opacity: .65; }
+details.card > summary { padding: 2px 0; }
+details.card[open] { gap: 10px; }
+.chip:disabled { opacity: .45; cursor: default; }
+.frame-chip { display: inline-flex; align-items: center; gap: 6px; padding-left: 6px; }
+/* frames (cadres) around avatars */
+.frame-bronze { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #c58a52; }
+.frame-argent { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #cfd6e4; }
+.frame-or { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #f5c542, 0 0 10px #f5c54266; }
+.frame-diamant { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #7fe3ff, 0 0 14px #7fe3ff88; }
+.frame-arcenciel { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #ff6b9a, 0 0 0 6px #ffd36b, 0 0 0 8px #6be3ff; }
+.frame-champion { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #f5c542, 0 0 0 6px #e5484d, 0 0 16px #f5c54288; }
+.ring .face[class*="frame-"]:not(.frame-aucun) { inset: 18px; border-radius: 50%; }

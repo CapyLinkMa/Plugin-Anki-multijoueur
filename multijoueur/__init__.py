@@ -2,7 +2,7 @@
 duel, group goals, activity feed. Reads only Anki's own numbers (works next
 to any other add-on) and shares them with your group's Supabase server.
 
-Module map: metrics.py (Anki numbers) · server.py (Supabase over HTTP) ·
+Module map: metrics.py (Anki numbers) · server.py (Supabase over HTTP) · games.py (défis, paris, saisons…) ·
 group.py (rankings, duel, streaks: pure) · api.py (sync + window requests) ·
 window.py + web/ (the window) · updater.py (updates from GitHub).
 """
@@ -28,6 +28,7 @@ UPDATE_CHECK_DELAY = 8  # seconds after Anki opens: let it start in peace first
 _api = None
 _window = None
 _timer = None
+_pomo_timer = None
 _last = {"status": 0.0, "sync": 0.0}
 _installing = [False]
 
@@ -159,8 +160,17 @@ def _on_closed(_result=None):
 
 
 @_safe
+def _pomo_tick():
+    """The shared pomodoro's "Pause !" / "Au travail !" in Anki, window open or not."""
+    api = get_api()
+    text = api.pomodoro_alert()
+    if text and _window is None:
+        tooltip(text, period=6000)
+
+
+@_safe
 def _on_profile_open():
-    global _api, _timer
+    global _api, _timer, _pomo_timer
     _api = None
     QTimer.singleShot(3000, _sync)
     QTimer.singleShot(UPDATE_CHECK_DELAY * 1000, check_update)
@@ -168,6 +178,10 @@ def _on_profile_open():
         _timer = QTimer(mw)
         _timer.timeout.connect(_sync)
     _timer.start(max(2, int(_config().get("sync_minutes", 10))) * 60 * 1000)
+    if _pomo_timer is None:
+        _pomo_timer = QTimer(mw)
+        _pomo_timer.timeout.connect(_pomo_tick)
+        _pomo_timer.start(5000)
 
 
 @_safe
