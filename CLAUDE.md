@@ -12,7 +12,8 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
 - **Serveur : Supabase, offre gratuite** (base Postgres + API REST). Le plugin lui parle en HTTP
   avec la clé publique `anon` ; les règles de sécurité (row level security) empêchent chacun
   de modifier les données des autres. Aucune clé secrète dans le code ni dans le dépôt.
-  Projet Supabase pas encore créé.
+  Projet : https://fohgoubpaklcqgrkroaw.supabase.co (compte CapyLinkMa). Schéma : `supabase/schema.sql`.
+  Joueurs = comptes anonymes Supabase Auth (session dans `multijoueur/user_files/`, jamais dans git).
 - **Vie privée** : on n'envoie que des chiffres d'étude et un pseudo, jamais le contenu des cartes.
 - **Langue** : interface en français. Les deux utilisateurs ne sont pas développeurs : leur
   expliquer simplement, sans jargon.
@@ -28,6 +29,15 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
 - Avant de commencer : `git pull`. En finissant une partie : commit clair en français + `git push`.
 - Noter dans « En cours » ci-dessous ce sur quoi on travaille, pour ne pas faire la même chose.
 - Une nouvelle décision importante → l'ajouter dans « Décisions déjà prises ».
+
+## Fait (v1, 2026-10-01)
+1 classement semaine, 2 multi-critères, 3 régularité, 5 records, 7 duel, 15 objectif commun,
+16 série de groupe, 19 fil d'activité, 20 réactions, 21 statut en direct, 24 profil,
+28 graphique, 29 carte de chaleur.
+
+## Reste à faire (choisi)
+8 défi sur mesure, 11 défi zéro retard, 13 saisons, 22 pomodoro synchronisé, 23 messages courts,
+25 badges de groupe, 26 points multijoueur, 27 trophées de saison.
 
 ## En cours
 - (personne)
