@@ -22,6 +22,8 @@ class FakeSupabase:
         self.ids = itertools.count(1)
         self.online = True
         self.calls = []
+        self.accounts = {}    # email -> (password, user id)
+        self.confirm_email = False
 
     # -- helpers -------------------------------------------------------------------------
     def _group_of(self, uid):
@@ -56,14 +58,35 @@ class FakeSupabase:
             uid, token = self.sign_up()
             return 200, json.dumps({"access_token": token, "refresh_token": f"ref-{uid}", "expires_in": 3600,
                                     "user": {"id": uid}})
+        if path == "/auth/v1/token" and query.get("grant_type") == ["password"]:
+            acc = self.accounts.get(data["email"].lower())
+            if not acc or acc[0] != data["password"]:
+                return 400, json.dumps({"error": "invalid_grant", "error_description": "Invalid login credentials"})
+            uid = acc[1]
+            token = f"tokp-{uid}"
+            self.users[token] = uid
+            self.refresh[f"ref-{uid}"] = uid
+            return 200, json.dumps({"access_token": token, "refresh_token": f"ref-{uid}", "expires_in": 3600,
+                                    "user": {"id": uid, "email": data["email"].lower()}})
+        if path == "/auth/v1/user" and method == "PUT":
+            uid = self.users.get(headers.get("Authorization", "").replace("Bearer ", ""))
+            if uid is None:
+                return 401, json.dumps({"message": "JWT expired"})
+            email = data["email"].lower()
+            if email in self.accounts:
+                return 422, json.dumps({"msg": "A user with this email address has already been registered"})
+            self.accounts[email] = (data["password"], uid)
+            return 200, json.dumps({"id": uid, "email": None if self.confirm_email else email,
+                                    "new_email": email if self.confirm_email else None})
         if path == "/auth/v1/token":
             uid = self.refresh.get(data.get("refresh_token"))
             if not uid:
                 return 400, json.dumps({"error_description": "Invalid Refresh Token"})
             token = f"tok2-{uid}"
             self.users[token] = uid
+            email = next((e for e, (_p, u) in self.accounts.items() if u == uid), None)
             return 200, json.dumps({"access_token": token, "refresh_token": data["refresh_token"], "expires_in": 3600,
-                                    "user": {"id": uid}})
+                                    "user": {"id": uid, "email": email}})
         uid = self.users.get(headers.get("Authorization", "").replace("Bearer ", ""))
         if uid is None:
             return 401, json.dumps({"message": "JWT expired"})

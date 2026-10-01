@@ -143,6 +143,48 @@ class TwoPlayers(unittest.TestCase):
         self.assertFalse(med.call("join_group", {"code": "AB"})["ok"])
         self.assertFalse(med.call("save_profile", {"pseudo": "x", "avatar": "🦫", "daily_goal": 5})["ok"])
 
+    def test_secure_account_then_sign_in_on_another_computer(self):
+        today = datetime.date.today().isoformat()
+        med = self.player("med", [{"day": today, "cards": 350, "minutes": 60, "new_cards": 20, "review_count": 200,
+                                   "retention": 0.9, "overdue": 0}])
+        med.call("save_profile", {"pseudo": "Slava", "avatar": "🦫", "daily_goal": 300})
+        med.call("create_group", {"name": "G"})
+        self.assertFalse(med.snapshot()["account"]["secured"])
+        self.assertFalse(med.call("secure_account", {"username": "é!", "password": "12345678"})["ok"])
+        self.assertFalse(med.call("secure_account", {"username": "slava", "password": "court"})["ok"])
+        self.assertTrue(med.call("secure_account", {"username": "Slava_M", "password": "motdepasse1"})["ok"])
+        self.assertEqual(med.snapshot()["account"]["username"], "slava_m")
+        other = self.player("other", [])
+        other.call("save_profile", {"pseudo": "X", "avatar": "🦫", "daily_goal": 100})
+        self.assertEqual(other.call("secure_account", {"username": "slava_m", "password": "autrechose"})["error"], "Ce nom d'utilisateur est déjà pris.")
+        uid = med.server.user_id
+        laptop = self.player("laptop", [])
+        res = laptop.call("sign_in", {"username": "slava_m", "password": "mauvais!!"})
+        self.assertEqual(res["error"], "Nom d'utilisateur ou mot de passe incorrect.")
+        self.assertTrue(laptop.call("sign_in", {"username": "SLAVA_M", "password": "motdepasse1"})["ok"])
+        snap = laptop.snapshot()
+        self.assertEqual(laptop.server.user_id, uid)          # same player, same history
+        self.assertEqual(snap["profile"]["pseudo"], "Slava")
+        self.assertEqual(snap["group"]["name"], "G")
+        me = next(p for p in snap["view"]["players"] if p["me"])
+        self.assertEqual(me["today_cards"], 350)
+
+    def test_confirmation_email_setting_is_explained(self):
+        self.fake.confirm_email = True
+        med = self.player("med", [])
+        med.call("save_profile", {"pseudo": "Slava", "avatar": "🦫", "daily_goal": 300})
+        res = med.call("secure_account", {"username": "slava", "password": "motdepasse1"})
+        self.assertIn("Confirm email", res["error"])
+
+    def test_catch_up_window_after_a_break(self):
+        med = self.player("med", [])
+        self.assertEqual(med.days_to_send(), api_mod.FIRST_SYNC_DAYS)
+        med.store["first_sync_done"] = True
+        med.store["last_push_day"] = datetime.date.today().isoformat()
+        self.assertEqual(med.days_to_send(), api_mod.SYNC_DAYS)
+        med.store["last_push_day"] = (datetime.date.today() - datetime.timedelta(days=40)).isoformat()
+        self.assertEqual(med.days_to_send(), 42)
+
     def test_session_is_kept_and_refreshed(self):
         clock = [1000.0]
         path = os.path.join(self.tmp, "s", "session.json")

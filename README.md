@@ -13,7 +13,8 @@ n'importe quel autre plugin : il ne lit que les chiffres d'Anki.
 
 ## Serveur (une seule fois, déjà fait pour notre groupe)
 Projet Supabase gratuit : coller `supabase/schema.sql` dans SQL Editor → Run, et activer
-Authentication → Sign In / Providers → « Allow anonymous sign-ins ».
+Authentication → Sign In / Providers → « Allow anonymous sign-ins », et désactiver « Confirm email »
+(les comptes sécurisés sont nom d'utilisateur + mot de passe, sans courriel).
 
 ## Développement
 - Tests : `python -m unittest discover tests` (avec Anki : `PYTHONPATH=/Applications/Anki.app/Contents/Resources/app_packages`).

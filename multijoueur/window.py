@@ -34,8 +34,8 @@ class GroupWindow(QDialog):
         super().__init__(parent)
         self.api = api
         self.setWindowTitle("👥 Anki Multijoueur")
-        self.setMinimumSize(720, 560)
-        self.resize(980, 760)
+        self.setMinimumSize(440, 460)
+        self.resize(600, 680)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.web = QWebEngineView(self)

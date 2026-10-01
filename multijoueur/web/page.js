@@ -7,6 +7,8 @@
   let S = window.MJ_BOOT || {};
   let tab = 'groupe';
   let draftAvatar = null;
+  let sortBy = 'pct';
+  let showLogin = false;
 
   // ---------------------------------------------------------------- bridge
   let callPy = null;
@@ -62,13 +64,13 @@
   function render() {
     const app = $('#app');
     const err = S.error ? `<div class="err">⚠️ ${esc(S.error)}</div>` : '';
-    if (!S.profile) { app.innerHTML = header() + err + profileForm(true); bindProfile(); return; }
+    if (!S.profile) { app.innerHTML = header() + err + profileForm(true) + loginCard(); bindProfile(); bindAccount(); return; }
     if (!S.group) { app.innerHTML = header() + err + groupChoice(); bindGroup(); return; }
     const tabs = [['groupe', '🏆 Groupe'], ['activite', '💬 Activité'], ['stats', '📊 Stats'], ['profil', '👤 Profil']];
     const body = { groupe: screenGroup, activite: screenFeed, stats: screenStats, profil: screenProfile }[tab]();
     app.innerHTML = header() + err + `<div class="tabs">${tabs.map(([id, l]) => `<button class="tab ${tab === id ? 'active' : ''}" data-tab="${id}">${l}</button>`).join('')}</div>` + body;
     app.querySelectorAll('[data-tab]').forEach((b) => { b.onclick = () => { tab = b.dataset.tab; render(); }; });
-    ({ groupe: () => {}, activite: bindFeed, stats: () => {}, profil: () => { bindProfile(); bindLeave(); } })[tab]();
+    ({ groupe: bindSort, activite: bindFeed, stats: () => {}, profil: () => { bindProfile(); bindLeave(); bindAccount(); } })[tab]();
   }
 
   function header() {
@@ -126,36 +128,49 @@
   }
 
   // -- 🏆 group
+  const CRITERIA = [
+    ['pct', '% de son objectif', (p) => p.week.pct, (p) => p.week.pct + ' %'],
+    ['validated', 'jours objectif atteint', (p) => p.week.validated, (p) => p.week.validated + '/7'],
+    ['streak', 'série 🔥', (p) => p.streak, (p) => p.streak + ' j'],
+    ['retention', 'rétention', (p) => p.week.retention || 0, (p) => (p.week.retention == null ? '—' : p.week.retention + ' %')],
+    ['minutes', 'minutes', (p) => p.week.minutes, (p) => fmt(p.week.minutes)],
+    ['new_cards', 'nouvelles cartes', (p) => p.week.new_cards, (p) => fmt(p.week.new_cards)],
+    ['cards', 'cartes (pour info)', (p) => p.week.cards, (p) => fmt(p.week.cards)],
+  ];
+
   function screenGroup() {
     const v = S.view;
     if (!v) return '<div class="card muted">Chargement du groupe…</div>';
-    const ranked = v.ranking.map(player);
+    const crit = CRITERIA.find((c) => c[0] === sortBy) || CRITERIA[0];
+    const ranked = v.players.slice().sort((a, b) => crit[2](b) - crit[2](a) || b.week.pct - a.week.pct);
     const rows = ranked.map((p, i) => `<tr class="${p.me ? 'me' : ''}"><td class="rank">${i + 1}</td><td>${who(p)}</td>
-      <td class="num"><b>${p.week.pct} %</b></td><td class="num">${p.week.validated}/7</td><td class="num">${fmt(p.week.cards)}</td>
-      <td class="num">${fmt(p.week.minutes)}</td><td class="num">${fmt(p.week.new_cards)}</td><td class="num">${p.week.retention == null ? '—' : p.week.retention + ' %'}</td></tr>`).join('');
-    const regular = v.regularity.map(player).map((p, i) => `<tr class="${p.me ? 'me' : ''}"><td class="rank">${i + 1}</td><td>${who(p)}</td><td class="num"><b>${p.streak}</b> ${plural(p.streak, 'jour', 'jours')} 🔥</td></tr>`).join('');
-    const today = v.players.map((p) => `<div style="margin:6px 0"><div class="small">${who(p)} <span class="muted">· ${fmt(p.today_cards)} / ${fmt(p.goal)} cartes</span> ${p.today_done ? '✅' : ''}</div>
+      <td class="num"><b>${crit[3](p)}</b></td>${crit[0] === 'pct' ? '' : `<td class="num muted">${p.week.pct} %</td>`}</tr>`).join('');
+    const today = v.players.map((p) => `<div class="today-row"><div class="small">${who(p)} <span class="muted">${fmt(p.today_cards)}/${fmt(p.goal)}</span> ${p.today_done ? '✅' : ''}</div>
       <div class="bar ${p.today_done ? 'green' : ''}"><div style="width:${Math.min(100, p.today_pct)}%"></div></div></div>`).join('');
-    let duel = '<p class="small muted">Il faut au moins 2 joueurs dans le groupe.</p>';
+    let duel = '<span class="small muted">Il faut au moins 2 joueurs.</span>';
     if (v.duel) {
       const [a, b] = v.duel.map(player);
-      duel = `<div class="duel"><div>${esc(a.avatar)}<div><b>${esc(a.pseudo)}</b></div><div class="big gold">${a.week.pct} %</div></div>
-        <div class="vs">VS</div><div>${esc(b.avatar)}<div><b>${esc(b.pseudo)}</b></div><div class="big">${b.week.pct} %</div></div></div>
-        <p class="tiny muted" style="text-align:center">Moyenne du % de son propre objectif depuis lundi (une journée compte au plus 150 %).</p>`;
+      duel = `<div class="duel"><div>${esc(a.avatar)} <b>${esc(a.pseudo)}</b><div class="big gold">${a.week.pct} %</div></div>
+        <div class="vs">VS</div><div>${esc(b.avatar)} <b>${esc(b.pseudo)}</b><div class="big">${b.week.pct} %</div></div></div>`;
     }
-    const wg = v.players.map((p) => `<div class="small">${who(p)} <span class="muted">${p.week.validated}/${v.week_goal.days} jours</span> ${p.week.validated >= v.week_goal.days ? '✅' : ''}</div>`).join('');
-    return `<div class="grid g2">
-      <div class="card"><h2>☀️ Aujourd'hui</h2>${today}</div>
-      <div class="card"><h2>⚔️ Duel de la semaine <span class="right">depuis le ${frDate(v.week_start)}</span></h2>${duel}</div>
-      <div class="card"><h2>🤝 Objectif commun <span class="right">tout le monde ${v.week_goal.days} jours / semaine</span></h2>${wg}
-        <p class="small" style="margin-bottom:0">${v.week_goal.done ? '🎉 Objectif de la semaine atteint par tout le groupe !' : 'Un jour compte quand tu atteins ton objectif de cartes.'}</p></div>
-      <div class="card"><h2>🔗 Série de groupe</h2><div class="stat"><b>${v.group_streak} ${plural(v.group_streak, 'jour', 'jours')} 🔥</b>
-        <span class="small muted">Elle monte seulement les jours où <b>tout le monde</b> a atteint son objectif.</span></div></div>
+    const weekDone = v.players.filter((p) => p.week.validated >= v.week_goal.days).length;
+    return `<div class="card"><h2>☀️ Aujourd'hui</h2>${today}</div>
+    <div class="grid g2 mt">
+      <div class="card"><h2>⚔️ Duel <span class="right">% de son objectif depuis lundi</span></h2>${duel}</div>
+      <div class="card"><h2>🤝 Ensemble</h2>
+        <div class="small">Objectif de la semaine (${v.week_goal.days} jours chacun) : <b>${weekDone}/${v.players.length}</b> ${v.week_goal.done ? '🎉' : ''}</div>
+        <div class="small" style="margin-top:4px">Série de groupe : <b>${v.group_streak} ${plural(v.group_streak, 'jour', 'jours')} 🔥</b> <span class="muted">(tout le monde à son objectif)</span></div></div>
     </div>
-    <div class="card" style="margin-top:12px"><h2>🏆 Classement de la semaine <span class="right">trié par % de son objectif</span></h2>
-      <table><tr><th></th><th>Joueur</th><th class="num">% objectif</th><th class="num">Jours ✅</th><th class="num">Cartes</th><th class="num">Minutes</th><th class="num">Nouvelles</th><th class="num">Rétention</th></tr>${rows}</table>
-      <p class="tiny muted">Vous n'avez pas le même programme : le nombre de cartes est affiché pour info, mais le classement compare le % de son propre objectif.</p></div>
-    <div class="card" style="margin-top:12px"><h2>📅 Classement régularité</h2><table>${regular}</table></div>`;
+    <div class="card mt"><div class="split"><h2 style="margin:0">🏆 Classement de la semaine</h2>
+      <select class="sel" id="sort">${CRITERIA.map((c) => `<option value="${c[0]}" ${c[0] === crit[0] ? 'selected' : ''}>${c[1]}</option>`).join('')}</select></div>
+      <table>${rows}</table>
+      <div class="tiny muted">Programmes différents : on compare d'abord le % de <b>son propre</b> objectif (max 150 % par jour).</div></div>`;
+  }
+
+  function bindSort() {
+    const s = $('#sort');
+    if (s) s.onchange = () => { sortBy = s.value; render(); };
+    bindCommon();
   }
 
   // -- 💬 feed
@@ -218,16 +233,50 @@
       <td class="num">${p.records.longest_streak} j</td><td class="num">${p.streak} j</td></tr>`).join('');
     const gr = v.group_records;
     return `<div class="card"><h2>📈 Les 30 derniers jours <span class="right">% de son propre objectif chaque jour</span></h2>${chartSvg(v.chart)}</div>
-      <div class="card" style="margin-top:12px"><h2>🗓️ Carte de chaleur du groupe <span class="right">26 semaines</span></h2><div class="heat">${heat}</div>
+      <div class="card mt"><h2>🗓️ Carte de chaleur du groupe <span class="right">26 semaines</span></h2><div class="heat">${heat}</div>
         <div class="legend">objectif atteint par : <span class="hc"></span> personne <span class="hc l1"></span> 1 joueur <span class="hc l2"></span> plusieurs <span class="hc all"></span> tout le monde</div></div>
-      <div class="card" style="margin-top:12px"><h2>🏅 Records</h2>
+      <div class="card mt"><h2>🏅 Records</h2>
         <table><tr><th>Joueur</th><th class="num">Meilleure journée</th><th class="num">Meilleure semaine</th><th class="num">Plus longue série</th><th class="num">Série actuelle</th></tr>${recs}</table>
         <p class="small" style="margin-bottom:0">Records du groupe : ${gr.best_day ? `meilleure journée <b>${fmt(gr.best_day[1].cards)}</b> cartes (${esc(gr.best_day[0])})` : '—'}${gr.longest_streak && gr.longest_streak[1] ? ` · plus longue série <b>${gr.longest_streak[1]} j</b> (${esc(gr.longest_streak[0])})` : ''}</p></div>`;
   }
 
+  // -- 🔒 account
+  function loginCard() {
+    return `<div class="card mt"><h2>🔑 Déjà un compte ?</h2>
+      ${showLogin ? `<div class="row"><input id="ac-user" placeholder="Nom d'utilisateur" autocomplete="username"><input id="ac-pass" type="password" placeholder="Mot de passe" autocomplete="current-password">
+        <button class="btn primary" id="ac-login">Se connecter</button></div>`
+      : '<button class="btn small" id="ac-show">Se connecter avec mon nom d\'utilisateur</button>'}</div>`;
+  }
+
+  function accountCard() {
+    const a = S.account || {};
+    if (a.secured) {
+      return `<div class="card mt"><h2>🔒 Mon compte</h2><div class="small">Connecté en tant que <b>${esc(a.username)}</b> ✅ · sur un autre ordinateur, connecte-toi avec ce nom et ton mot de passe.</div></div>`;
+    }
+    return `<div class="card mt"><h2>🔒 Sécuriser mon compte <span class="right">facultatif</span></h2>
+      <div class="small muted">Pour retrouver ta progression sur un autre ordinateur ou après une réinstallation. Pas de courriel.</div>
+      <div class="row"><input id="ac-user" maxlength="24" placeholder="Nom d'utilisateur" autocomplete="username">
+        <input id="ac-pass" type="password" placeholder="Mot de passe (8+)" autocomplete="new-password">
+        <button class="btn primary" id="ac-secure">Sécuriser</button></div></div>` + loginCard();
+  }
+
+  function bindAccount() {
+    const show = $('#ac-show');
+    if (show) show.onclick = () => { showLogin = true; render(); };
+    const creds = () => ({ username: $('#ac-user').value, password: $('#ac-pass').value });
+    const sec = $('#ac-secure');
+    if (sec) sec.onclick = async () => { const r = await api('secure_account', creds()); if (r.ok) toast('🔒 Compte sécurisé !'); };
+    const login = $('#ac-login');
+    if (login) login.onclick = async () => {
+      if (S.profile && !confirm('Te connecter à ce compte ? Ce profil-ci sera remplacé sur cet ordinateur (sécurise-le d\'abord si tu veux le garder).')) return;
+      const r = await api('sign_in', creds());
+      if (r.ok) { showLogin = false; toast('✅ Connecté'); }
+    };
+  }
+
   // -- 👤 profile
   function screenProfile() {
-    return profileForm(false) + `<div class="card" style="margin-top:12px"><h2>👥 Mon groupe</h2>
+    return profileForm(false) + accountCard() + `<div class="card mt"><h2>👥 Mon groupe</h2>
       <p>« ${esc(S.group.name)} » · code à donner à tes amis : <span class="code">${esc(S.group.code)}</span></p>
       <button class="btn small" id="g-leave">Quitter le groupe</button></div>`;
   }

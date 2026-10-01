@@ -13,7 +13,12 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
   avec la clé publique `anon` ; les règles de sécurité (row level security) empêchent chacun
   de modifier les données des autres. Aucune clé secrète dans le code ni dans le dépôt.
   Projet : https://fohgoubpaklcqgrkroaw.supabase.co (compte CapyLinkMa). Schéma : `supabase/schema.sql`.
-  Joueurs = comptes anonymes Supabase Auth (session dans `multijoueur/user_files/`, jamais dans git).
+  Joueurs = comptes anonymes Supabase Auth (session dans `multijoueur/user_files/`, jamais dans git),
+  sécurisables par **nom d'utilisateur + mot de passe, sans courriel** (le plugin fabrique une adresse
+  `<nom>@joueurs.anki-multijoueur.app` jamais utilisée ; « Confirm email » désactivé dans Supabase).
+- **Interface compacte** : elle vit à côté de nos casinos, donc petite fenêtre (600×680), une colonne.
+- **Rattrapage** : les 14 derniers jours sont renvoyés à chaque synchro (et tout depuis le dernier envoi
+  après une pause), et une synchro part après chaque synchro Anki : les cartes faites sur téléphone comptent.
 - **Vie privée** : on n'envoie que des chiffres d'étude et un pseudo, jamais le contenu des cartes.
 - **Langue** : interface en français. Les deux utilisateurs ne sont pas développeurs : leur
   expliquer simplement, sans jargon.

@@ -9,13 +9,15 @@ connection. Offline, nothing is lost: the next sync re-sends the days.
 import datetime
 import json
 import os
+import re
 
 from . import group
 from . import metrics
 from .server import ServerError
 
+USERNAME = re.compile(r"[a-z0-9._-]{3,24}")
 FIRST_SYNC_DAYS = 365
-SYNC_DAYS = 14
+SYNC_DAYS = 14   # re-sent every time: reviews synced in later from a phone (no add-on there) are caught up
 AVATARS = ["🙂", "🦫", "🦊", "🐼", "🐸", "🦉", "🐙", "🦄", "🐯", "🐨", "🐧", "🦖", "🧠", "🫀", "🫁", "🧬", "🔬", "💊", "🩺", "📚"]
 
 
@@ -56,8 +58,20 @@ class MultiAPI:
         col = self.col_getter()
         if col is None:
             return None
-        n = SYNC_DAYS if self.store["first_sync_done"] else FIRST_SYNC_DAYS
-        return metrics.recent_days(col, n)
+        return metrics.recent_days(col, self.days_to_send())
+
+    def days_to_send(self):
+        """14 days normally; everything since the last successful send when
+        the add-on wasn't used for a while (another computer, a long break):
+        reviews done anywhere arrive through Anki's own sync, so resending
+        recent days catches them up."""
+        if not self.store["first_sync_done"]:
+            return FIRST_SYNC_DAYS
+        last = self.store.get("last_push_day")
+        if not last:
+            return SYNC_DAYS
+        gap = (datetime.date.today() - datetime.date.fromisoformat(last)).days + 2
+        return max(SYNC_DAYS, min(FIRST_SYNC_DAYS, gap))
 
     def _network_sync(self, days):
         """In the background: send my days and milestones, fetch the group."""
@@ -77,11 +91,14 @@ class MultiAPI:
             since = (datetime.date.today() - datetime.timedelta(days=group.HEATMAP_WEEKS * 7 + 400)).isoformat()
             out["days"] = srv.days_since(since)
             if days:
-                mine = {r["day"]: dict(r, goal=int(profile.get("daily_goal") or 100))
-                        for r in out["days"] if r["user_id"] == srv.user_id}
-                for key, kind, payload in group.milestones(mine, profile, days[-1]["day"], set(self.store["sent"])):
-                    srv.post_event(profile["group_id"], kind, payload)
-                    out["sent"].append(key)
+                mine = {r["day"]: r for r in out["days"] if r["user_id"] == srv.user_id}
+                sent = set(self.store["sent"])
+                # today, and yesterday too: a goal reached on the phone late at night still shows up
+                for day in [r["day"] for r in days[-2:]]:
+                    for key, kind, payload in group.milestones(mine, profile, day, sent):
+                        srv.post_event(profile["group_id"], kind, dict(payload, day=day))
+                        out["sent"].append(key)
+                        sent.add(key)
             out["events"] = srv.events()
             out["reactions"] = srv.reactions([e["id"] for e in out["events"]])
         return out
@@ -111,6 +128,7 @@ class MultiAPI:
                     self.cache[key] = data[key]
                 if data["pushed"]:
                     self.store["first_sync_done"] = True
+                    self.store["last_push_day"] = datetime.date.today().isoformat()
                 self.store["sent"] += data["sent"]
                 self.store["last_sync"] = self.now().isoformat(timespec="seconds")
                 self._save()
@@ -162,6 +180,7 @@ class MultiAPI:
                  "my_reactions": [r["emoji"] for r in c["reactions"] if r["event_id"] == e["id"] and r["user_id"] == me]}
                 for e in c["events"]]
         return {"profile": c["profile"], "group": c["group"], "view": view, "feed": feed, "me": me,
+                "account": {"username": self.server.username, "secured": bool(self.server.username)},
                 "error": self.error, "syncing": self.syncing, "last_sync": self.store.get("last_sync"),
                 "avatars": AVATARS, "emojis": ["👏", "🔥", "💪", "😮", "❤️"], "ready": bool(self.store.get("last_sync"))}
 
@@ -220,6 +239,28 @@ class MultiAPI:
         self.server.leave_group()
         for key in ("group", "members", "days", "events", "reactions"):
             self.cache[key] = None if key == "group" else []
+        self.sync()
+        return {}
+
+    @staticmethod
+    def _check_credentials(username, password):
+        username = (username or "").strip().lower()
+        if not USERNAME.fullmatch(username):
+            raise ServerError("Nom d'utilisateur : 3 à 24 caractères, lettres sans accent, chiffres, « . », « - » ou « _ ».")
+        if len(password or "") < 8:
+            raise ServerError("Mot de passe : au moins 8 caractères.")
+        return username
+
+    def do_secure_account(self, username, password):
+        self.server.secure_account(self._check_credentials(username, password), password)
+        return {}
+
+    def do_sign_in(self, username, password):
+        self.server.sign_in(self._check_credentials(username, password), password)
+        self.store = {"sent": [], "first_sync_done": False}
+        self._save()
+        for key in self.cache:
+            self.cache[key] = None if key in ("profile", "group") else []
         self.sync()
         return {}
 

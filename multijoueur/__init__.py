@@ -107,6 +107,17 @@ def _on_state_change(new_state, old_state):
         _sync()
 
 
+@_safe
+def _on_sync_finish():
+    """Reviews done on the phone (no add-on there) arrive with Anki's sync:
+    send them right away."""
+    _sync()
+
+
+def _on_toolbar(links, toolbar):
+    links.append(toolbar.create_link("anki-multijoueur", "👥", open_window, tip="Multijoueur", id="anki-multijoueur"))
+
+
 def _setup_menu():
     action = QAction("👥 Multijoueur", mw)
     action.triggered.connect(open_window)
@@ -117,4 +128,6 @@ if mw is not None:
     gui_hooks.profile_did_open.append(_on_profile_open)
     gui_hooks.reviewer_did_answer_card.append(_on_answer)
     gui_hooks.state_did_change.append(_on_state_change)
+    gui_hooks.sync_did_finish.append(_on_sync_finish)
+    gui_hooks.top_toolbar_did_init_links.append(_on_toolbar)
     _setup_menu()

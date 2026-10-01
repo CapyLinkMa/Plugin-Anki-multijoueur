@@ -21,6 +21,19 @@ def now_iso():
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 
+LOGIN_DOMAIN = "joueurs.anki-multijoueur.app"   # never emailed: Supabase just needs an address-shaped login
+
+
+def login_address(username):
+    return f"{username.lower()}@{LOGIN_DOMAIN}"
+
+
+def username_of(address):
+    if address and address.endswith("@" + LOGIN_DOMAIN):
+        return address.split("@")[0]
+    return address
+
+
 class ServerError(Exception):
     """A request that failed, with a message fit for the player."""
 
@@ -81,10 +94,18 @@ class Server:
         return (self.session or {}).get("user_id")
 
     def _store(self, data):
+        user = data.get("user") or {}
+        old = self.session or {}
         self.session = {"access_token": data["access_token"], "refresh_token": data["refresh_token"],
                         "expires_at": self.clock() + int(data.get("expires_in") or 3600),
-                        "user_id": (data.get("user") or {}).get("id") or (self.session or {}).get("user_id")}
+                        "user_id": user.get("id") or old.get("user_id"),
+                        "email": user.get("email") or (old.get("email") if not user else None) or None}
         self._save()
+
+    @property
+    def username(self):
+        """The login once the account is secured with a password (None = anonymous)."""
+        return username_of((self.session or {}).get("email"))
 
     def _raw(self, method, path, body=None, token=None, extra=None):
         headers = {"apikey": self.key, "Content-Type": "application/json",
@@ -117,6 +138,44 @@ class Server:
         token = self.ensure_session()
         extra = {"Prefer": prefer} if prefer else None
         return self._raw(method, path, body, token, extra)
+
+    # -- account: anonymous at first, secured with an email + password when wanted --------------------
+    def secure_account(self, username, password):
+        """Adds a username and a password to this (anonymous) account: same
+        player, same history, now recoverable on another computer."""
+        email = login_address(username)
+        token = self.ensure_session()
+        try:
+            user = self._raw("PUT", "/auth/v1/user", {"email": email, "password": password}, token)
+        except ServerError as exc:
+            if "already" in str(exc).lower():
+                raise ServerError("Ce nom d'utilisateur est déjà pris.")
+            raise
+        if ((user or {}).get("email") or "").lower() != email:
+            raise ServerError("Le serveur demande une confirmation par courriel : désactive « Confirm email » dans Supabase.")
+        self.session["email"] = user["email"]
+        self._save()
+        # a fresh token that carries the new identity
+        self._store(self._raw("POST", "/auth/v1/token?grant_type=refresh_token",
+                              {"refresh_token": self.session["refresh_token"]}))
+
+    def sign_in(self, username, password):
+        """Takes over a secured account on this computer (replaces the current one)."""
+        try:
+            data = self._raw("POST", "/auth/v1/token?grant_type=password",
+                             {"email": login_address(username), "password": password})
+        except ServerError as exc:
+            if "invalid" in str(exc).lower() or "credentials" in str(exc).lower():
+                raise ServerError("Nom d'utilisateur ou mot de passe incorrect.")
+            raise
+        self._store(data)
+
+    def sign_out(self):
+        self.session = None
+        try:
+            os.remove(self.session_path)
+        except OSError:
+            pass
 
     # -- the calls the add-on makes -------------------------------------------------------------
     def my_profile(self):
