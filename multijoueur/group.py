@@ -142,7 +142,7 @@ def records(rows, member):
     }
 
 
-def is_live(member, now):
+def is_live(member, now, minutes=LIVE_MINUTES):
     at = member.get("status_at")
     if not at or member.get("status") != "study":
         return False
@@ -150,7 +150,7 @@ def is_live(member, now):
         seen = datetime.datetime.fromisoformat(at.replace("Z", "+00:00"))
     except ValueError:
         return False
-    return (now - seen).total_seconds() <= LIVE_MINUTES * 60
+    return (now - seen).total_seconds() <= minutes * 60
 
 
 def everyone_validated(day, members, rows_by_user):

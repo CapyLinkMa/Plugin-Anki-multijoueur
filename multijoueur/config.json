@@ -2,5 +2,7 @@
     "supabase_url": "https://fohgoubpaklcqgrkroaw.supabase.co",
     "supabase_key": "sb_publishable_aMBcEMvlge76m49-6Pisfg_clqiXTQK",
     "sync_minutes": 10,
-    "depot_github": "CapyLinkMa/Plugin-Anki-multijoueur"
+    "depot_github": "CapyLinkMa/Plugin-Anki-multijoueur",
+    "indicateur_revisions": true,
+    "indicateur_coin": "haut-droite"
 }

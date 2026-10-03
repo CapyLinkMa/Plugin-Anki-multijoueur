@@ -4,15 +4,18 @@ to any other add-on) and shares them with your group's Supabase server.
 
 Module map: metrics.py (Anki numbers) · server.py (Supabase over HTTP) · games.py (défis, paris, saisons…) ·
 group.py (rankings, duel, streaks: pure) · api.py (sync + window requests) ·
-window.py + web/ (the window) · updater.py (updates from GitHub).
+window.py + web/ (the window) · web/presence.* (the little dot and message bubbles during reviews) ·
+updater.py (updates from GitHub).
 """
 
+import json
 import os
 import time
 import traceback
 
 from aqt import gui_hooks, mw
 from aqt.qt import QAction, QTimer
+from aqt.reviewer import Reviewer
 from aqt.utils import askUser, showInfo, showWarning, tooltip
 
 from . import updater
@@ -24,11 +27,14 @@ USER_FILES = os.path.join(ADDON_DIR, "user_files")
 STATUS_EVERY = 120      # seconds between two "en train d'étudier" pings
 SYNC_AFTER_CARDS = 300  # seconds between two syncs while reviewing
 UPDATE_CHECK_DELAY = 8  # seconds after Anki opens: let it start in peace first
+LIVE_EVERY = 45         # seconds between two "who is studying? new messages?" checks
+CORNERS = ("haut-droite", "haut-gauche", "bas-droite", "bas-gauche")
 
 _api = None
 _window = None
 _timer = None
 _pomo_timer = None
+_live_timer = None
 _last = {"status": 0.0, "sync": 0.0}
 _installing = [False]
 
@@ -168,9 +174,38 @@ def _pomo_tick():
         tooltip(text, period=6000)
 
 
+# -- during reviews: who else is studying, and their messages -------------------------------------
+def _presence_on():
+    return bool(_config().get("indicateur_revisions", True))
+
+
+@_safe
+def _live_tick():
+    if mw.col is None or not _presence_on():
+        return
+    get_api().live_check(_show_live)
+
+
+@_safe
+def _show_live(out):
+    corner = _config().get("indicateur_coin", "haut-droite")
+    out["corner"] = corner if corner in CORNERS else "haut-droite"
+    if mw.state == "review" and mw.reviewer and mw.reviewer.web:
+        mw.reviewer.web.eval("window.mjLive&&mjLive(%s);" % json.dumps(out, ensure_ascii=False))
+    elif _window is None:   # the window, when open, shows the messages itself
+        for m in out["messages"]:
+            tooltip(f"{m['avatar']} {m['pseudo']}{' ' if m.get('verb') else ' : '}{m['text']}", period=6000)
+
+
+def _on_webview_content(web_content, context):
+    if isinstance(context, Reviewer) and _presence_on():
+        from .page import _read
+        web_content.head += f"<style>{_read('presence.css')}</style><script>{_read('presence.js')}</script>"
+
+
 @_safe
 def _on_profile_open():
-    global _api, _timer, _pomo_timer
+    global _api, _timer, _pomo_timer, _live_timer
     _api = None
     QTimer.singleShot(3000, _sync)
     QTimer.singleShot(UPDATE_CHECK_DELAY * 1000, check_update)
@@ -182,6 +217,10 @@ def _on_profile_open():
         _pomo_timer = QTimer(mw)
         _pomo_timer.timeout.connect(_pomo_tick)
         _pomo_timer.start(5000)
+    if _live_timer is None:
+        _live_timer = QTimer(mw)
+        _live_timer.timeout.connect(_live_tick)
+        _live_timer.start(LIVE_EVERY * 1000)
 
 
 @_safe
@@ -196,7 +235,12 @@ def _on_answer(*_args):
 
 @_safe
 def _on_state_change(new_state, old_state):
+    if new_state == "review" and old_state != "review":
+        _last["status"] = time.time()
+        get_api().set_studying()
+        QTimer.singleShot(1500, _live_tick)   # once the review page is ready
     if old_state == "review" and new_state in ("overview", "deckBrowser"):
+        get_api().set_idle()
         _sync()
 
 
@@ -226,4 +270,5 @@ if mw is not None:
     gui_hooks.state_did_change.append(_on_state_change)
     gui_hooks.sync_did_finish.append(_on_sync_finish)
     gui_hooks.top_toolbar_did_init_links.append(_on_toolbar)
+    gui_hooks.webview_will_set_content.append(_on_webview_content)
     _setup_menu()

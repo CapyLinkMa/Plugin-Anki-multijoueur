@@ -1,0 +1,31 @@
+/* Pendant les révisions : qui étudie en ce moment + bulles des messages. Volontairement discret. */
+#mj-live{position:fixed;z-index:9990;display:flex;flex-direction:column;gap:6px;pointer-events:none;
+  font:600 12px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif}
+#mj-live.mj-haut-droite{top:10px;right:12px;align-items:flex-end}
+#mj-live.mj-haut-gauche{top:10px;left:12px;align-items:flex-start}
+#mj-live.mj-bas-droite{bottom:90px;right:12px;align-items:flex-end;flex-direction:column-reverse}
+#mj-live.mj-bas-gauche{bottom:90px;left:12px;align-items:flex-start;flex-direction:column-reverse}
+#mj-live .mj-pill{display:flex;align-items:center;gap:5px;padding:3px 7px;border-radius:999px;background:rgba(255,255,255,.75);
+  color:#1d1d1f;box-shadow:0 1px 6px rgba(0,0,0,.08);opacity:0;transition:opacity .8s}
+#mj-live .mj-pill.on{opacity:.55;pointer-events:auto}
+#mj-live .mj-pill.on:hover{opacity:1}
+#mj-live .mj-who{position:relative;display:inline-flex}
+#mj-live .mj-av{font-size:14px;line-height:1}
+#mj-live .mj-dot{position:absolute;right:-3px;bottom:-1px;width:6px;height:6px;border-radius:50%;background:#2fb36d;
+  box-shadow:0 0 0 1.5px rgba(255,255,255,.95);animation:mjBreath 3.2s ease-in-out infinite}
+@keyframes mjBreath{50%{opacity:.35}}
+#mj-live .mj-lab{max-width:0;overflow:hidden;white-space:nowrap;font-size:11px;transition:max-width .35s}
+#mj-live .mj-pill:hover .mj-lab{max-width:180px;margin-left:2px}
+#mj-live .mj-msgs{display:flex;flex-direction:inherit;gap:6px;align-items:inherit}
+#mj-live .mj-msg{display:flex;gap:7px;align-items:center;max-width:280px;padding:7px 11px;border-radius:12px;
+  background:rgba(255,255,255,.96);color:#1d1d1f;box-shadow:0 4px 16px rgba(0,0,0,.12);
+  opacity:0;transform:translateY(-8px) scale(.97);transition:opacity .35s,transform .45s cubic-bezier(.2,1.3,.35,1)}
+#mj-live.mj-bas-droite .mj-msg,#mj-live.mj-bas-gauche .mj-msg{transform:translateY(8px) scale(.97)}
+#mj-live .mj-msg.on{opacity:1;transform:none}
+#mj-live .mj-msg.out{opacity:0;transition:opacity .5s}
+#mj-live .mj-msg .mj-av{font-size:17px}
+#mj-live .mj-msg b{font-weight:700}
+.nightMode #mj-live .mj-pill,.night-mode #mj-live .mj-pill,body.night_mode #mj-live .mj-pill{background:rgba(30,32,40,.8);color:#eceef3}
+.nightMode #mj-live .mj-msg,.night-mode #mj-live .mj-msg,body.night_mode #mj-live .mj-msg{background:rgba(30,32,40,.96);color:#eceef3}
+.nightMode #mj-live .mj-dot,.night-mode #mj-live .mj-dot,body.night_mode #mj-live .mj-dot{box-shadow:0 0 0 1.5px rgba(30,32,40,.95)}
+@media (prefers-reduced-motion:reduce){#mj-live .mj-dot{animation:none}#mj-live .mj-msg{transition:opacity .3s}}

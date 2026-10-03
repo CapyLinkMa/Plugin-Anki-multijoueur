@@ -57,6 +57,13 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
   un 🥇 débloque le cadre « Champion·ne ». La fenêtre se rafraîchit seule toutes les 30 s (`api.poll`,
   sans lire Anki) ; l'alerte du pomodoro s'affiche aussi dans Anki fenêtre fermée.
 
+- **Présence et bulles pendant les révisions** (v5, 2026-10-03, Xyroob) : toutes les 45 s (`api.live_check`,
+  2 petites requêtes en arrière-plan), un point discret (`web/presence.*`, injecté dans l'écran de révision) montre
+  qui révise depuis moins de 5 min (`LIVE_DOT_MINUTES`) ; en quittant les révisions on passe en statut `idle`.
+  Les nouveaux `msg` et les « Encourager » qui me sont adressés s'affichent en bulle (infobulle Anki hors révisions,
+  rien si la fenêtre est ouverte). Dernier événement vu : `msg_seen` dans `state.json` ; un message de plus de 30 min
+  n'est pas montré. Réglages : `indicateur_revisions`, `indicateur_coin`. Schéma inchangé.
+
 ## Travailler à deux sur ce dépôt
 - Avant de commencer : `git pull`. En finissant une partie : commit clair en français + `git push`.
 - Noter dans « En cours » ci-dessous ce sur quoi on travaille, pour ne pas faire la même chose.
@@ -73,6 +80,7 @@ v3 (Xyroob) : nouvelle interface, 17 encourager d'un clic (+ « Féliciter » = 
 v4 (CapyLinkMa) : 6 bilan mensuel, 8 défi sur mesure, 9 course, 11 zéro retard, 12 paris, 13 saisons,
 14 boss d'équipe, 22 pomodoro synchronisé, 23 messages courts, 25 badges de groupe, 26 points/titres/cadres,
 27 trophées de saison.
+v5 (Xyroob) : point « il/elle révise » et bulles de messages pendant les révisions.
 
 ## Reste à faire (choisi)
 Tout ce qui a été choisi est fait. Idées non choisies : 4, 10, 18, 30, et 31-33 (pont vers les casinos).

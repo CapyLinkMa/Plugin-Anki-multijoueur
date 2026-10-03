@@ -140,6 +140,8 @@ class FakeSupabase:
             if "kind" in query:
                 kinds = query["kind"][0][4:-1].split(",")
                 rows = [e for e in rows if e["kind"] in kinds]
+            if "id" in query and query["id"][0].startswith("gt."):
+                rows = [e for e in rows if e["id"] > int(query["id"][0][3:])]
             if "created_at" in query:
                 since = query["created_at"][0].split(".", 1)[1]
                 rows = [e for e in rows if e["created_at"][:10] >= since[:10]]

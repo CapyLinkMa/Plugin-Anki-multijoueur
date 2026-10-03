@@ -232,6 +232,14 @@ class Server:
         return self.request("GET", f"/rest/v1/events?select=*&kind=in.({','.join(kinds)})"
                                    f"&created_at=gte.{since_iso}&order=id.asc&limit={int(limit)}") or []
 
+    def messages_after(self, last_id):
+        """Short messages and « Encourager » posted after event `last_id`, oldest
+        first. With None: only the latest one (to know where to start, nothing shown)."""
+        cols = "select=id,user_id,kind,payload,created_at&kind=in.(msg,encourage)"
+        if last_id is None:
+            return self.request("GET", f"/rest/v1/events?{cols}&order=id.desc&limit=1") or []
+        return self.request("GET", f"/rest/v1/events?{cols}&id=gt.{int(last_id)}&order=id.asc&limit=20") or []
+
     def reactions(self, event_ids):
         if not event_ids:
             return []

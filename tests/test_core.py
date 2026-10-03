@@ -77,6 +77,8 @@ class GroupRules(unittest.TestCase):
         now = datetime.datetime(2026, 10, 1, 12, 0, tzinfo=datetime.timezone.utc)
         self.assertTrue(group.is_live({"status": "study", "status_at": "2026-10-01T11:55:00+00:00"}, now))
         self.assertFalse(group.is_live({"status": "study", "status_at": "2026-10-01T11:00:00+00:00"}, now))
+        self.assertFalse(group.is_live({"status": "study", "status_at": "2026-10-01T11:54:00+00:00"}, now, minutes=5))
+        self.assertFalse(group.is_live({"status": "idle", "status_at": "2026-10-01T11:59:00+00:00"}, now))
 
 
 class TwoPlayers(unittest.TestCase):
@@ -91,6 +93,39 @@ class TwoPlayers(unittest.TestCase):
         api = api_mod.MultiAPI(srv, lambda: None, os.path.join(self.tmp, name, "state.json"))
         api.collect = lambda: days   # no Anki collection here
         return api
+
+    def test_presence_dot_and_message_bubbles(self):
+        """Pendant les révisions : le point « il/elle révise » et les bulles de messages."""
+        med, bio = self.player("med", []), self.player("bio", [])
+        med.call("save_profile", {"pseudo": "Slava", "avatar": "🦫", "daily_goal": 300})
+        bio.call("save_profile", {"pseudo": "Ami", "avatar": "🧬", "daily_goal": 60})
+        code = med.call("create_group", {"name": "Duo"})["code"]
+        bio.call("join_group", {"code": code})
+        med.sync(), bio.sync()
+        bio.call("send_message", {"code": "go"})          # written before the first check: never shown
+        seen = []
+        self.assertTrue(med.live_check(seen.append))
+        self.assertEqual(seen[-1], {"live": [], "messages": []})
+        bio.set_studying()
+        bio.call("send_message", {"code": "courage"})
+        med.call("send_message", {"code": "bravo"})       # my own message: no bubble for me
+        bio.call("encourage", {"player_id": med.server.user_id})
+        med.live_check(seen.append)
+        self.assertEqual(seen[-1]["live"], [{"pseudo": "Ami", "avatar": "🧬"}])
+        self.assertEqual([m["text"] for m in seen[-1]["messages"]], ["Courage, tu peux le faire 💪", "t'encourage ! 💪"])
+        self.assertEqual(seen[-1]["messages"][0]["pseudo"], "Ami")
+        med.live_check(seen.append)                       # each message is shown only once
+        self.assertEqual(seen[-1]["messages"], [])
+        again = self.player("med", [])                    # Anki restarted: still remembered
+        again.cache["profile"] = med.cache["profile"]
+        again.live_check(seen.append)
+        self.assertEqual(seen[-1]["messages"], [])
+        bio.set_idle()                                    # left the reviews: the dot goes away
+        med.live_check(seen.append)
+        self.assertEqual(seen[-1]["live"], [])
+        old = {"id": 10 ** 6, "user_id": bio.server.user_id, "kind": "msg", "payload": {"code": "go"},
+               "created_at": "2020-01-01T00:00:00+00:00"}     # Anki was closed for ages: not shown
+        self.assertEqual(med.live_view(med.cache["members"], [old], 1)["messages"], [])
 
     def test_create_join_sync_and_react(self):
         today = datetime.date.today()

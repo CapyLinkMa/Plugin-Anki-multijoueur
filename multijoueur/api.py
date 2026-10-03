@@ -22,6 +22,8 @@ USERNAME = re.compile(r"[a-z0-9._-]{3,24}")
 FIRST_SYNC_DAYS = 365
 SYNC_DAYS = 14   # re-sent every time: reviews synced in later from a phone (no add-on there) are caught up
 TARGET_DAYS_KEPT = 60
+LIVE_DOT_MINUTES = 5        # the little dot during reviews: someone counts as studying if seen in the last 5 min
+FRESH_MESSAGE_MINUTES = 30  # messages older than that (Anki was closed) are only marked as seen, not shown
 AVATARS = ["🙂", "🦫", "🦊", "🐼", "🐸", "🦉", "🐙", "🦄", "🐯", "🐨", "🐧", "🦖", "🧠", "🫀", "🫁", "🧬", "🔬", "💊", "🩺", "📚"]
 
 
@@ -38,6 +40,7 @@ class MultiAPI:
         self.error = None
         self.syncing = False
         self.listeners = []   # called with the new snapshot after each background sync
+        self.live_busy = False
         self.update = None              # {"version", "nouveautes"} when GitHub has a newer version
         self.on_install_update = None   # set by __init__.py (needs Qt)
 
@@ -230,6 +233,63 @@ class MultiAPI:
     def set_studying(self):
         """Called while reviewing (throttled by the caller): 'en train d'étudier'."""
         self.run_bg(lambda: self._quiet(lambda: self.server.set_status("study")), lambda _r: None)
+
+    def set_idle(self):
+        """Called when leaving the reviews: the others' dot goes away right away."""
+        self.run_bg(lambda: self._quiet(lambda: self.server.set_status("idle")), lambda _r: None)
+
+    def live_check(self, on_done):
+        """Every ~45 s while Anki is open: who else is studying right now and the
+        short messages written since the last check (two light requests, in the
+        background). on_done({"live": [...], "messages": [...]}) on the main thread."""
+        if self.live_busy or not (self.cache.get("profile") or {}).get("group_id"):
+            return False
+        self.live_busy = True
+        seen = self.store.get("msg_seen")
+
+        def task():
+            try:
+                return {"ok": True, "members": self.server.members(), "msgs": self.server.messages_after(seen)}
+            except ServerError:
+                return {"ok": False}
+
+        def done(res):
+            self.live_busy = False
+            if res["ok"]:
+                on_done(self.live_view(res["members"], res["msgs"], seen))
+
+        self.run_bg(task, done)
+        return True
+
+    def live_view(self, members, msgs, seen):
+        """-> {"live": the others studying now, "messages": the new messages to show}."""
+        me, now = self.server.user_id, self.now()
+        live = [{"pseudo": m["pseudo"], "avatar": m.get("avatar") or "🙂"} for m in members
+                if m["id"] != me and group.is_live(m, now, LIVE_DOT_MINUTES)]
+        names = {m["id"]: m for m in members}
+        shown = []
+        if seen is not None:
+            for e in msgs:
+                payload = e.get("payload") or {}
+                if e.get("kind") == "encourage":
+                    text = "t'encourage ! 💪" if payload.get("to") == me else None
+                else:
+                    text = games.MESSAGE_TEXT.get(payload.get("code"))
+                if e["user_id"] == me or not text:
+                    continue
+                try:
+                    at = datetime.datetime.fromisoformat(str(e["created_at"]).replace("Z", "+00:00"))
+                    if (now - at).total_seconds() > FRESH_MESSAGE_MINUTES * 60:
+                        continue
+                except ValueError:
+                    pass
+                who = names.get(e["user_id"]) or {}
+                shown.append({"pseudo": who.get("pseudo", "?"), "avatar": who.get("avatar") or "🙂", "text": text,
+                              "verb": e.get("kind") == "encourage"})   # « Slava t'encourage » vs « Slava · Courage… »
+        if msgs or seen is None:
+            self.store["msg_seen"] = max([int(e["id"]) for e in msgs] + [int(seen or 0)])
+            self._save()
+        return {"live": live, "messages": shown}
 
     @staticmethod
     def _quiet(fn):
