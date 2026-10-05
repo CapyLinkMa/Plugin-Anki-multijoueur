@@ -105,7 +105,7 @@ class TwoPlayers(unittest.TestCase):
         bio.call("send_message", {"code": "go"})          # written before the first check: never shown
         seen = []
         self.assertTrue(med.live_check(seen.append))
-        self.assertEqual(seen[-1], {"live": [], "messages": []})
+        self.assertEqual((seen[-1]["live"], seen[-1]["messages"]), ([], []))
         bio.set_studying()
         bio.call("send_message", {"code": "courage"})
         med.call("send_message", {"code": "bravo"})       # my own message: no bubble for me

@@ -63,6 +63,17 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
   Les nouveaux `msg` et les « Encourager » qui me sont adressés s'affichent en bulle (infobulle Anki hors révisions,
   rien si la fenêtre est ouverte). Dernier événement vu : `msg_seen` dans `state.json` ; un message de plus de 30 min
   n'est pas montré. Réglages : `indicateur_revisions`, `indicateur_coin`. Schéma inchangé.
+- **v6** (2026-10-05, CapyLinkMa) : **notifications à gauche par défaut** (les casinos sont à droite) : coin
+  `haut-gauche` pour les bulles/le point pendant les révisions, et toasts de la fenêtre en bas à gauche
+  (les infobulles d'Anki sont déjà en bas à gauche). **Réglages par ordinateur** dans la fenêtre (avatar →
+  Réglages : point, bulles, minuteur, son, coin), gardés dans `state.json` (`settings`) ; config.json ne donne
+  que les valeurs par défaut. Bulles aussi pour un pari qui m'est proposé, un nouveau défi, un pomodoro lancé ;
+  **cliquables** (`pycmd("mjlive:…")` → ouvre la fenêtre sur le bon onglet, ou rejoint le pomodoro).
+  **Minuteur du pomodoro** pendant les révisions. Fenêtre : carte « À faire » (paris à accepter, pomodoro à
+  rejoindre, défis qui finissent), **historique des duels** (`games.duel_history`), carte « Résultats »
+  dans Activité (`games.moments` : défis finis, paris réglés, duels, saisons, calculés, jamais postés),
+  **défis rapides** en un clic, pastille de non-lus sur Activité (`feed_seen`). `snapshot()` garde en mémoire
+  les calculs tant que rien n'a changé (`api._computed`).
 
 ## Travailler à deux sur ce dépôt
 - Avant de commencer : `git pull`. En finissant une partie : commit clair en français + `git push`.
@@ -81,14 +92,14 @@ v4 (CapyLinkMa) : 6 bilan mensuel, 8 défi sur mesure, 9 course, 11 zéro retard
 14 boss d'équipe, 22 pomodoro synchronisé, 23 messages courts, 25 badges de groupe, 26 points/titres/cadres,
 27 trophées de saison.
 v5 (Xyroob) : point « il/elle révise » et bulles de messages pendant les révisions.
+v6 (CapyLinkMa) : notifications à gauche, réglages, bulles cliquables + minuteur, À faire, historique des duels,
+résultats, défis rapides, non-lus.
 
 ## Reste à faire (choisi)
 Tout ce qui a été choisi est fait. Idées non choisies : 4, 10, 18, 30, et 31-33 (pont vers les casinos).
 
 ## En cours
-- CapyLinkMa (Claude, 2026-10-05) : grosse MAJ v6 (notifications à gauche, réglages dans la fenêtre,
-  bulles cliquables + minuteur pomodoro pendant les révisions, « À faire », historique des duels, fil enrichi,
-  défis rapides, non-lus). Merci d'attendre le push avant de toucher à api.py / page.js / presence.*.
+- (personne)
 
 ## Pour Claude
 - Plugin Anki (Python 3.13, Qt6 via `aqt`). Pas de pip dans Anki : seulement la bibliothèque

@@ -116,7 +116,7 @@ svg text { fill: var(--muted); font-size: 10px; }
 .err { background: #3a1f28; border: 1px solid #6b2e3d; color: #ffd0d0; border-radius: 12px; padding: 10px 14px; }
 .update { display: flex; gap: 12px; align-items: center; justify-content: space-between; background: #1d2f22; border: 1px solid #2f6b44; color: #d6ffe4; border-radius: 12px; padding: 10px 14px; }
 .code { font: 700 18px/1 ui-monospace, Menlo, monospace; letter-spacing: 3px; color: var(--me); }
-#toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--card2); border: 1px solid var(--line); padding: 10px 16px; border-radius: 12px; box-shadow: 0 6px 24px #0008; }
+#toast { position: fixed; bottom: 18px; left: 18px; max-width: calc(100% - 36px); background: var(--card2); border: 1px solid var(--line); padding: 10px 16px; border-radius: 12px; box-shadow: 0 6px 24px #0008; }
 
 /* v4: défis, pomodoro, saison, badges, titres et cadres */
 .tabs { grid-template-columns: repeat(5, minmax(0, 1fr)); }
@@ -147,3 +147,19 @@ details.card[open] { gap: 10px; }
 .frame-arcenciel { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #ff6b9a, 0 0 0 6px #ffd36b, 0 0 0 8px #6be3ff; }
 .frame-champion { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #f5c542, 0 0 0 6px #e5484d, 0 0 16px #f5c54288; }
 .ring .face[class*="frame-"]:not(.frame-aucun) { inset: 18px; border-radius: 50%; }
+
+/* v6: à faire, historique des duels, non-lus, réglages, résultats */
+.tab { position: relative; }
+.unread { position: absolute; top: 3px; right: 6px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 99px;
+  background: var(--boss); color: #fff; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
+.unread.dotonly { min-width: 8px; width: 8px; height: 8px; padding: 0; top: 6px; background: var(--me); }
+.card.todo { border-color: var(--me); }
+.todo-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid var(--line); }
+.todo-row:first-of-type { border-top: none; }
+.duel-hist { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 3px; align-items: center; text-align: center; }
+.wks { display: inline-flex; gap: 3px; vertical-align: middle; margin-left: 6px; }
+.wk { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.switch-row { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.switch-row input { margin-top: 3px; accent-color: var(--me); width: 16px; height: 16px; flex-shrink: 0; }
+.result { padding: 4px 0; border-top: 1px solid var(--line); }
+.result:first-of-type { border-top: none; }

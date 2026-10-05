@@ -330,3 +330,120 @@ class ThroughTheAddon(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class V6(unittest.TestCase):
+    """Réglages, non-lus, bulles cliquables, minuteur, historique des duels, résultats."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.fake = FakeSupabase()
+
+    def player(self, name):
+        srv = server_mod.Server("https://x.supabase.co", "k", os.path.join(self.tmp, name, "s.json"), opener=self.fake)
+        api = api_mod.MultiAPI(srv, lambda: None, os.path.join(self.tmp, name, "state.json"))
+        today = datetime.date.today()
+        api.collect = lambda: [{"day": today.isoformat(), "cards": 100, "minutes": 30, "new_cards": 5,
+                                "review_count": 50, "retention": 0.9, "overdue": 0}]
+        return api
+
+    def pair(self):
+        med, bio = self.player("med"), self.player("bio")
+        med.call("save_profile", {"pseudo": "Med", "avatar": "🫀", "daily_goal": 100})
+        bio.call("save_profile", {"pseudo": "Bio", "avatar": "🧬", "daily_goal": 100})
+        bio.call("join_group", {"code": med.call("create_group", {"name": "G"})["code"]})
+        med.sync(), bio.sync()
+        return med, bio
+
+    def test_settings_default_left_kept_and_validated(self):
+        med = self.player("med")
+        self.assertEqual(med.settings()["corner"], "haut-gauche")
+        changed = []
+        med.on_settings = changed.append
+        self.assertTrue(med.call("save_settings", {"corner": "bas-gauche", "sound": False})["ok"])
+        self.assertFalse(med.call("save_settings", {"corner": "plafond"})["ok"])
+        self.assertEqual((changed[-1]["corner"], changed[-1]["sound"]), ("bas-gauche", False))
+        again = self.player("med")
+        self.assertEqual(again.settings()["corner"], "bas-gauche")
+        self.assertEqual(again.snapshot()["settings"]["sound"], False)
+
+    def test_sign_in_keeps_this_computers_choices(self):
+        med, _bio = self.pair()
+        med.call("save_settings", {"corner": "bas-gauche"})
+        med.call("secure_account", {"username": "med_v6", "password": "motdepasse1"})
+        laptop = self.player("med")
+        laptop.call("sign_in", {"username": "med_v6", "password": "motdepasse1"})
+        self.assertEqual(laptop.settings()["corner"], "bas-gauche")
+
+    def test_unread_feed(self):
+        med, bio = self.pair()
+        self.assertGreater(med.snapshot()["unread"], 0)        # Bio joined, finished a day...
+        med.call("feed_seen")
+        self.assertEqual(med.snapshot()["unread"], 0)
+        bio.call("send_message", {"code": "go"})
+        med.call("send_message", {"code": "bravo"})            # mine: not unread
+        med.poll()
+        self.assertEqual(med.snapshot()["unread"], 1)
+        med.call("feed_seen")
+        self.assertEqual(med.snapshot()["unread"], 0)
+
+    def test_bubbles_for_bets_défis_and_pomodoros_with_a_click(self):
+        med, bio = self.pair()
+        got = []
+        med.live_check(got.append)                              # first check: start point
+        today = datetime.date.today().isoformat()
+        end = (datetime.date.today() + datetime.timedelta(days=2)).isoformat()
+        bio.call("create_bet", {"type": "duel", "opponent": med.server.user_id, "stake": 5, "start": today, "end": end})
+        bio.call("create_challenge", {"type": "boss", "target": 100, "start": today, "end": end})
+        bio.call("start_pomodoro", {"work": 25, "rest": 5, "rounds": 2})
+        med.live_check(got.append)
+        msgs = got[-1]["messages"]
+        self.assertEqual([m["click"] for m in msgs][:2], ["accueil", "defis"])
+        self.assertTrue(msgs[2]["click"].startswith("pomo:"))
+        self.assertIn("pari de 5 pts", msgs[0]["text"])
+        # the bubble made the game data fresh: joining works right away, then the timer shows
+        self.assertTrue(med.call("join_pomodoro", {"ref": int(msgs[2]["click"].split(":")[1])})["ok"])
+        med.live_check(got.append)
+        self.assertEqual(got[-1]["pomo"]["work"], 25)
+        med.call("save_settings", {"pomo_pill": False, "bubbles": False})
+        bio.call("send_message", {"code": "go"})
+        med.live_check(got.append)
+        self.assertEqual((got[-1]["pomo"], got[-1]["messages"]), (None, []))
+
+    def test_open_tab_is_used_once(self):
+        med, _bio = self.pair()
+        med.open_tab = "defis"
+        self.assertEqual(med.snapshot()["open_tab"], "defis")
+        self.assertIsNone(med.snapshot()["open_tab"])
+
+
+class DuelsAndResults(unittest.TestCase):
+    def test_weekly_duels_and_results(self):
+        start = datetime.date(2026, 9, 28)   # a Monday
+        rows = []
+        for n in range(14):
+            d = (start + datetime.timedelta(days=n)).isoformat()
+            med_done = n < 7                   # med wins week 1, bio wins week 2
+            rows.append({"user_id": "med", "day": d, "cards": 300 if med_done else 100, "goal": 300, "overdue": 0,
+                         "review_count": 100, "retention": 0.9})
+            rows.append({"user_id": "bio", "day": d, "cards": 30 if med_done else 60, "goal": 60, "overdue": 0,
+                         "review_count": 30, "retention": 0.9})
+        ev = Ev()
+        g = games.build(MEMBERS, rows, ev.list, "2026-10-12", "med", start.isoformat())
+        d = g["duels"]
+        self.assertEqual([w["winner"] for w in d["weeks"]], ["bio", "med"])     # newest first
+        self.assertEqual(d["wins"], {"med": 1, "bio": 1})
+        self.assertEqual([m["type"] for m in g["moments"]][:2], ["duel", "duel"])
+
+    def test_finished_challenge_and_bet_show_as_results(self):
+        ev = Ev()
+        ev.add("med", "challenge", {"type": "boss", "target": 50, "start": day(0), "end": day(2)})
+        bid = ev.add("med", "bet", {"type": "duel", "opponent": "bio", "stake": 10, "start": day(0), "end": day(1)})
+        ev.add("bio", "bet_accept", {"ref": bid})
+        rows = [full_day(u, n, gl) for n in range(3) for u, gl in (("med", 300), ("bio", 60))]
+        rows[1]["overdue"] = 5      # bio's first day isn't zero backlog: med wins the duel bet
+        g = build(rows, ev, 5)
+        kinds = {m["type"]: m for m in g["moments"]}
+        self.assertEqual(kinds["challenge"]["status"], "won")
+        self.assertEqual(kinds["bet"]["winner"], "med")

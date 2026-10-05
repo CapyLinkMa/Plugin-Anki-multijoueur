@@ -1,4 +1,5 @@
-/* Pendant les révisions : qui étudie en ce moment + bulles des messages. Volontairement discret. */
+/* Pendant les révisions : qui étudie en ce moment, bulles (cliquables) et minuteur du pomodoro.
+   Volontairement discret ; à gauche par défaut (les casinos sont à droite). */
 #mj-live{position:fixed;z-index:9990;display:flex;flex-direction:column;gap:6px;pointer-events:none;
   font:600 12px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif}
 #mj-live.mj-haut-droite{top:10px;right:12px;align-items:flex-end}
@@ -21,11 +22,21 @@
   background:rgba(255,255,255,.96);color:#1d1d1f;box-shadow:0 4px 16px rgba(0,0,0,.12);
   opacity:0;transform:translateY(-8px) scale(.97);transition:opacity .35s,transform .45s cubic-bezier(.2,1.3,.35,1)}
 #mj-live.mj-bas-droite .mj-msg,#mj-live.mj-bas-gauche .mj-msg{transform:translateY(8px) scale(.97)}
-#mj-live .mj-msg.on{opacity:1;transform:none}
+#mj-live .mj-msg.on{opacity:1;transform:none;pointer-events:auto}
+#mj-live .mj-msg.mj-click{cursor:pointer}
+#mj-live .mj-msg.mj-click:hover{box-shadow:0 4px 18px rgba(0,0,0,.2),0 0 0 2px rgba(245,181,68,.7)}
+#mj-live .mj-pomo{display:none;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.85);
+  color:#1d1d1f;box-shadow:0 1px 6px rgba(0,0,0,.1);opacity:.75;pointer-events:auto}
+#mj-live .mj-pomo:hover{opacity:1}
+#mj-live .mj-pomo.on{display:flex}
+#mj-live .mj-pomo b{font-variant-numeric:tabular-nums;font-size:13px}
+#mj-live .mj-pomo.rest{box-shadow:0 0 0 1.5px #2fb36d}
+#mj-live .mj-pomo .mj-lab2{font-size:11px;font-weight:500;opacity:.7}
 #mj-live .mj-msg.out{opacity:0;transition:opacity .5s}
 #mj-live .mj-msg .mj-av{font-size:17px}
 #mj-live .mj-msg b{font-weight:700}
 .nightMode #mj-live .mj-pill,.night-mode #mj-live .mj-pill,body.night_mode #mj-live .mj-pill{background:rgba(30,32,40,.8);color:#eceef3}
+.nightMode #mj-live .mj-pomo,.night-mode #mj-live .mj-pomo,body.night_mode #mj-live .mj-pomo{background:rgba(30,32,40,.85);color:#eceef3}
 .nightMode #mj-live .mj-msg,.night-mode #mj-live .mj-msg,body.night_mode #mj-live .mj-msg{background:rgba(30,32,40,.96);color:#eceef3}
 .nightMode #mj-live .mj-dot,.night-mode #mj-live .mj-dot,body.night_mode #mj-live .mj-dot{box-shadow:0 0 0 1.5px rgba(30,32,40,.95)}
 @media (prefers-reduced-motion:reduce){#mj-live .mj-dot{animation:none}#mj-live .mj-msg{transition:opacity .3s}}

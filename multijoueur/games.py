@@ -578,6 +578,56 @@ class Game:
                         "stopped_at": stopped_at.isoformat() if stopped_at else None})
         return out
 
+    # -- duels de la semaine (historique) --------------------------------------------------------------
+    def duel_history(self):
+        """Every finished week since the group started: who made the most points.
+        -> {"weeks": [{monday, scores, winner}] newest first, "wins": {uid: n}}"""
+        weeks, wins = [], {uid: 0 for uid in self.ids}
+        monday = G.monday(self.start)
+        while monday + datetime.timedelta(days=6) < self.today:
+            span = [x for x in days_between(monday, monday + datetime.timedelta(days=6)) if x >= self.start]
+            scores = {uid: sum(self.days[uid].points(x)["total"] for x in span) for uid in self.ids}
+            best = max(scores.values(), default=0)
+            top = [uid for uid, v in scores.items() if v == best]
+            winner = top[0] if best and len(top) == 1 and len(self.ids) > 1 else None
+            if winner:
+                wins[winner] += 1
+            weeks.append({"monday": monday.isoformat(), "scores": scores, "winner": winner})
+            monday += datetime.timedelta(days=7)
+        return {"weeks": weeks[::-1][:12], "wins": wins}
+
+    # -- moments: results nobody posts, shown in the feed ---------------------------------------------
+    def moments(self, duels, trophies):
+        """Computed news for the feed (same on every computer): défis finished,
+        bets settled, weekly duels, season podiums. Newest first."""
+        out = []
+        for c in self.challenges:
+            if c["status"] in ("won", "lost", "over"):
+                day = c.get("won_day") or c["end"]
+                if c["status"] == "over" and not any(p.get("done") for p in c["players"]):
+                    status = "lost"
+                else:
+                    status = c["status"]
+                done = [p["id"] for p in c["players"] if p.get("done")] if c["type"] != "boss" else []
+                out.append({"type": "challenge", "day": day, "ref": c["id"], "challenge": c["type"],
+                            "title": c.get("title"), "target": c["target"], "metric": c["metric"],
+                            "status": status, "winners": c.get("winners") or done, "solo": c["solo"], "by": c["by"]})
+        for b in self.bets:
+            if b["status"] == "settled":
+                out.append({"type": "bet", "day": min(b["end"], self.today.isoformat()), "ref": b["id"],
+                            "winner": b["winner"], "stake": b["stake"], "players": [b["by"], b["opponent"]]})
+        for w in duels["weeks"]:
+            if w["winner"]:
+                sunday = (datetime.date.fromisoformat(w["monday"]) + datetime.timedelta(days=6)).isoformat()
+                out.append({"type": "duel", "day": sunday, "winner": w["winner"], "scores": w["scores"]})
+        for uid, items in trophies.items():
+            for t in items:
+                if t["medal"] == "🥇":
+                    last = month_bounds(t["month"])[1].isoformat()
+                    out.append({"type": "season", "day": last, "winner": uid, "label": t["label"]})
+        out.sort(key=lambda m: m["day"], reverse=True)
+        return out[:30]
+
     # -- all of it for the window ----------------------------------------------------------------------
     def build(self):
         pomos = self.pomodoros()
@@ -595,6 +645,7 @@ class Game:
         if prev not in reports and prev >= month_key(self.start):
             reports[prev] = self.report(prev)
         live = [p for p in pomos if p["active"]]
+        duels = self.duel_history()
         return {
             "start": self.start.isoformat(),
             "players": players,
@@ -606,6 +657,8 @@ class Game:
             "badges": self.group_badges(pomos),
             "pomodoro": live[0] if live else None,
             "pomodoros_done": sum(1 for p in pomos if not p["active"] and not p["stopped"]),
+            "duels": duels,
+            "moments": self.moments(duels, trophies),
         }
 
 

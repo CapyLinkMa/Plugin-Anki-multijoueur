@@ -28,13 +28,14 @@ STATUS_EVERY = 120      # seconds between two "en train d'étudier" pings
 SYNC_AFTER_CARDS = 300  # seconds between two syncs while reviewing
 UPDATE_CHECK_DELAY = 8  # seconds after Anki opens: let it start in peace first
 LIVE_EVERY = 45         # seconds between two "who is studying? new messages?" checks
-CORNERS = ("haut-droite", "haut-gauche", "bas-droite", "bas-gauche")
+CORNERS = ("haut-gauche", "bas-gauche", "haut-droite", "bas-droite")
 
 _api = None
 _window = None
 _timer = None
 _pomo_timer = None
 _live_timer = None
+_last_live = {}
 _last = {"status": 0.0, "sync": 0.0}
 _installing = [False]
 
@@ -55,6 +56,11 @@ def get_api():
                         os.path.join(USER_FILES, "session.json"))
         _api = MultiAPI(server, lambda: mw.col, os.path.join(USER_FILES, "state.json"), run_bg=_run_bg)
         _api.on_install_update = install_update
+        _api.on_settings = _apply_settings
+        if not cfg.get("indicateur_revisions", True):
+            _api.defaults.update(presence=False, bubbles=False)
+        if cfg.get("indicateur_coin") in CORNERS:
+            _api.defaults["corner"] = cfg["indicateur_coin"]
     return _api
 
 
@@ -146,14 +152,17 @@ def _sync():
 
 
 @_safe
-def open_window():
+def open_window(tab=None):
     global _window
     from .window import GroupWindow
     api = get_api()
     if _window is not None:
         _window.raise_()
         _window.activateWindow()
+        if tab:
+            _window.web.page().runJavaScript(f"window.MJ&&MJ.go({json.dumps(tab)});")
         return
+    api.open_tab = tab
     _window = GroupWindow(mw, api)
     _window.finished.connect(_on_closed)
     _window.show()
@@ -175,32 +184,61 @@ def _pomo_tick():
 
 
 # -- during reviews: who else is studying, and their messages -------------------------------------
-def _presence_on():
-    return bool(_config().get("indicateur_revisions", True))
-
-
 @_safe
 def _live_tick():
-    if mw.col is None or not _presence_on():
+    if mw.col is None:
         return
     get_api().live_check(_show_live)
 
 
+def _in_review():
+    return mw.state == "review" and mw.reviewer and mw.reviewer.web
+
+
 @_safe
 def _show_live(out):
-    corner = _config().get("indicateur_coin", "haut-droite")
-    out["corner"] = corner if corner in CORNERS else "haut-droite"
-    if mw.state == "review" and mw.reviewer and mw.reviewer.web:
+    _last_live.clear()
+    _last_live.update(out, messages=[])
+    if _in_review():
         mw.reviewer.web.eval("window.mjLive&&mjLive(%s);" % json.dumps(out, ensure_ascii=False))
-    elif _window is None:   # the window, when open, shows the messages itself
+    elif _window is None:   # the window, when open, shows the messages itself; tooltips sit bottom-left
         for m in out["messages"]:
             tooltip(f"{m['avatar']} {m['pseudo']}{' ' if m.get('verb') else ' : '}{m['text']}", period=6000)
 
 
+@_safe
+def _apply_settings(settings):
+    """Réglages changed in the window: re-dress the review screen at once."""
+    if _in_review() and _last_live:
+        out = dict(_last_live, corner=settings["corner"], sound=settings["sound"])
+        if not settings["presence"]:
+            out["live"] = []
+        if not settings["pomo_pill"]:
+            out["pomo"] = None
+        mw.reviewer.web.eval("window.mjLive&&mjLive(%s);" % json.dumps(out, ensure_ascii=False))
+
+
 def _on_webview_content(web_content, context):
-    if isinstance(context, Reviewer) and _presence_on():
+    if isinstance(context, Reviewer):
         from .page import _read
         web_content.head += f"<style>{_read('presence.css')}</style><script>{_read('presence.js')}</script>"
+
+
+def _on_js_message(handled, message, context):
+    """A click on a bubble during reviews: « mjlive:open » (Activité), « mjlive:accueil », « mjlive:defis »,
+    « mjlive:pomo:<id> » (join it)."""
+    if not isinstance(message, str) or not message.startswith("mjlive:"):
+        return handled
+    what = message.split(":", 2)[1:]
+    try:
+        if what[0] == "pomo" and len(what) > 1:
+            get_api().call("join_pomodoro", {"ref": int(what[1])})
+            open_window("accueil")
+        else:
+            open_window({"defis": "defis", "accueil": "accueil", "open": "activite"}.get(what[0]))
+    except Exception:
+        traceback.print_exc()
+    return (True, None)
 
 
 @_safe
@@ -252,12 +290,12 @@ def _on_sync_finish():
 
 
 def _on_toolbar(links, toolbar):
-    links.append(toolbar.create_link("anki-multijoueur", "👥", open_window, tip="Multijoueur", id="anki-multijoueur"))
+    links.append(toolbar.create_link("anki-multijoueur", "👥", lambda: open_window(), tip="Multijoueur", id="anki-multijoueur"))
 
 
 def _setup_menu():
     action = QAction("👥 Multijoueur", mw)
-    action.triggered.connect(open_window)
+    action.triggered.connect(lambda: open_window())
     mw.form.menuTools.addAction(action)
     check = QAction("👥 Multijoueur : chercher une mise à jour", mw)
     check.triggered.connect(lambda: check_update(manual=True))
@@ -271,4 +309,5 @@ if mw is not None:
     gui_hooks.sync_did_finish.append(_on_sync_finish)
     gui_hooks.top_toolbar_did_init_links.append(_on_toolbar)
     gui_hooks.webview_will_set_content.append(_on_webview_content)
+    gui_hooks.webview_did_receive_js_message.append(_on_js_message)
     _setup_menu()

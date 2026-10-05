@@ -4,5 +4,5 @@
     "sync_minutes": 10,
     "depot_github": "CapyLinkMa/Plugin-Anki-multijoueur",
     "indicateur_revisions": true,
-    "indicateur_coin": "haut-droite"
+    "indicateur_coin": "haut-gauche"
 }

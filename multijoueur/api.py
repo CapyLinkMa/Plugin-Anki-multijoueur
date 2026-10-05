@@ -24,6 +24,16 @@ SYNC_DAYS = 14   # re-sent every time: reviews synced in later from a phone (no 
 TARGET_DAYS_KEPT = 60
 LIVE_DOT_MINUTES = 5        # the little dot during reviews: someone counts as studying if seen in the last 5 min
 FRESH_MESSAGE_MINUTES = 30  # messages older than that (Anki was closed) are only marked as seen, not shown
+LIVE_KINDS = ("msg", "encourage", "bet", "challenge", "pomo")   # what can pop up as a bubble
+CORNERS = ("haut-gauche", "bas-gauche", "haut-droite", "bas-droite")
+SETTINGS = {                 # this computer's choices (Profil → Réglages), kept in user_files/state.json
+    "presence": True,        # the little dot "X révise" during reviews
+    "bubbles": True,         # the bubbles (messages, défis, paris, pomodoro) during reviews
+    "corner": "haut-gauche", # on the left: the casinos live on the right
+    "pomo_pill": True,       # the pomodoro timer during reviews
+    "sound": True,           # a short sound when the pomodoro changes phase
+}
+KEPT_ON_SIGN_IN = ("targets", "settings", "msg_seen", "feed_seen")
 AVATARS = ["🙂", "🦫", "🦊", "🐼", "🐸", "🦉", "🐙", "🦄", "🐯", "🐨", "🐧", "🦖", "🧠", "🫀", "🫁", "🧬", "🔬", "💊", "🩺", "📚"]
 
 
@@ -41,8 +51,12 @@ class MultiAPI:
         self.syncing = False
         self.listeners = []   # called with the new snapshot after each background sync
         self.live_busy = False
+        self.defaults = dict(SETTINGS)  # __init__.py may adjust them from config.json
+        self._memo = (None, None)
         self.update = None              # {"version", "nouveautes"} when GitHub has a newer version
         self.on_install_update = None   # set by __init__.py (needs Qt)
+        self.on_settings = None         # set by __init__.py: re-dress the review screen at once
+        self.open_tab = None            # the tab the window opens on (a click on a bubble)
 
     # -- local file -------------------------------------------------------------------------
     def _load(self):
@@ -62,6 +76,31 @@ class MultiAPI:
         with open(self.store_path + ".tmp", "w", encoding="utf-8") as f:
             json.dump(self.store, f)
         os.replace(self.store_path + ".tmp", self.store_path)
+
+    # -- réglages ----------------------------------------------------------------------------
+    def settings(self):
+        out = dict(self.defaults)
+        out.update({k: v for k, v in (self.store.get("settings") or {}).items() if k in SETTINGS})
+        if out["corner"] not in CORNERS:
+            out["corner"] = SETTINGS["corner"]
+        return out
+
+    def do_save_settings(self, **values):
+        clean = {}
+        for key, value in values.items():
+            if key not in SETTINGS:
+                continue
+            if key == "corner":
+                if value not in CORNERS:
+                    return {"ok": False, "error": "Coin inconnu."}
+                clean[key] = value
+            else:
+                clean[key] = bool(value)
+        self.store.setdefault("settings", {}).update(clean)
+        self._save()
+        if self.on_settings:
+            self.on_settings(self.settings())
+        return {}
 
     # -- sync -------------------------------------------------------------------------------
     def collect(self):
@@ -249,7 +288,8 @@ class MultiAPI:
 
         def task():
             try:
-                return {"ok": True, "members": self.server.members(), "msgs": self.server.messages_after(seen)}
+                return {"ok": True, "members": self.server.members(),
+                        "msgs": self.server.messages_after(seen, LIVE_KINDS)}
             except ServerError:
                 return {"ok": False}
 
@@ -271,10 +311,7 @@ class MultiAPI:
         if seen is not None:
             for e in msgs:
                 payload = e.get("payload") or {}
-                if e.get("kind") == "encourage":
-                    text = "t'encourage ! 💪" if payload.get("to") == me else None
-                else:
-                    text = games.MESSAGE_TEXT.get(payload.get("code"))
+                text, click = self._notice(e, payload, me)
                 if e["user_id"] == me or not text:
                     continue
                 try:
@@ -285,11 +322,43 @@ class MultiAPI:
                     pass
                 who = names.get(e["user_id"]) or {}
                 shown.append({"pseudo": who.get("pseudo", "?"), "avatar": who.get("avatar") or "🙂", "text": text,
-                              "verb": e.get("kind") == "encourage"})   # « Slava t'encourage » vs « Slava · Courage… »
+                              "verb": e.get("kind") != "msg",   # « Slava t'encourage » vs « Slava · Courage… »
+                              "click": click})
         if msgs or seen is None:
             self.store["msg_seen"] = max([int(e["id"]) for e in msgs] + [int(seen or 0)])
             self._save()
-        return {"live": live, "messages": shown}
+        if any(e.get("kind") in games.GAME_KINDS for e in msgs) and seen is not None:
+            self.poll()       # a new défi / pari / pomodoro: refresh the game data too
+        st = self.settings()
+        pomo = self.my_pomodoro() if st["pomo_pill"] else None
+        return {"live": live if st["presence"] else [], "messages": shown if st["bubbles"] else [],
+                "corner": st["corner"], "sound": st["sound"],
+                "pomo": {k: pomo[k] for k in ("id", "start", "work", "rest", "rounds")} if pomo else None}
+
+    @staticmethod
+    def _notice(e, payload, me):
+        """-> (bubble text, what a click does) for one event, or (None, None)."""
+        kind = e.get("kind")
+        if kind == "encourage":
+            return ("t'encourage ! 💪", "open") if payload.get("to") == me else (None, None)
+        if kind == "msg":
+            return games.MESSAGE_TEXT.get(payload.get("code")), "open"
+        if kind == "bet" and payload.get("opponent") == me:
+            return f"te propose un pari de {payload.get('stake')} pts 💰 (clique pour répondre)", "accueil"
+        if kind == "challenge" and not payload.get("solo"):
+            return "lance un nouveau défi 🎯 (clique pour voir)", "defis"
+        if kind == "pomo":
+            return "lance un pomodoro 🍅 (clique pour le rejoindre)", f"pomo:{int(e['id'])}"
+        return None, None
+
+    def my_pomodoro(self):
+        """The shared pomodoro I'm in right now, from what was last fetched, or None."""
+        try:
+            g = games.Game(self.cache.get("members") or [], [], self.cache.get("game_events") or [],
+                           datetime.date.fromisoformat(self.today()), self.server.user_id, now=self.now())
+            return next((p for p in g.pomodoros() if p["active"] and self.server.user_id in p["players"]), None)
+        except Exception:
+            return None
 
     @staticmethod
     def _quiet(fn):
@@ -312,7 +381,7 @@ class MultiAPI:
         c = self.cache
         me = self.server.user_id
         today = self.today()
-        view = group.build(c["members"], c["days"], today, me, self.now()) if c["group"] else None
+        view, game = self._computed(today, me)
         names = {m["id"]: {"pseudo": m["pseudo"], "avatar": m.get("avatar") or "🙂"} for m in c["members"]}
         reactions = {}
         for r in c["reactions"]:
@@ -329,11 +398,9 @@ class MultiAPI:
                  "my_reactions": [REACTIONS.get(r["emoji"], r["emoji"]) for r in c["reactions"]
                                   if r["event_id"] == e["id"] and r["user_id"] == me]}
                 for e in c["events"] if e["kind"] not in hidden]
-        game = None
-        if view:
-            start = games.local_day(c["group"].get("created_at")) if c["group"].get("created_at") else None
-            game = games.build(c["members"], c["days"], c.get("game_events") or [], today, me,
-                               start.isoformat() if start else None, self.now())
+        if self.store.get("feed_seen") is None and feed:     # first look: nothing is "new"
+            self.store["feed_seen"] = max(e["id"] for e in feed)
+        unread = sum(1 for e in feed if not e["mine"] and e["id"] > (self.store.get("feed_seen") or 0))
         if view:
             for p in view["players"]:
                 # "Féliciter" reacts to today's goal event; "Encourager" once a day
@@ -347,7 +414,30 @@ class MultiAPI:
                 "update": self.update, "game": game,
                 "messages": [{"code": k, "text": t} for k, t in games.MESSAGES],
                 "messages_left": max(0, games.MESSAGES_PER_DAY - self._sent_today("msg")),
-                "now": self.now().isoformat()}
+                "now": self.now().isoformat(), "unread": unread, "settings": self.settings(),
+                "corners": list(CORNERS), "open_tab": self._take_open_tab()}
+
+    def _take_open_tab(self):
+        tab, self.open_tab = self.open_tab, None
+        return tab
+
+    def _computed(self, today, me):
+        """The group screen and the game data. Rebuilt only when something
+        changed (new data, new day, a minute later): snapshot() runs often."""
+        c = self.cache
+        if not c["group"]:
+            return None, None
+        key = (id(c["members"]), len(c["members"] or []), id(c["days"]), len(c["days"] or []),
+               id(c.get("game_events")), len(c.get("game_events") or []), id(c["group"]), today, me,
+               self.now().strftime("%Y-%m-%dT%H:%M"))
+        if self._memo[0] == key:
+            return self._memo[1]
+        view = group.build(c["members"], c["days"], today, me, self.now())
+        start = games.local_day(c["group"].get("created_at")) if c["group"].get("created_at") else None
+        game = games.build(c["members"], c["days"], c.get("game_events") or [], today, me,
+                           start.isoformat() if start else None, self.now())
+        self._memo = (key, (view, game))
+        return view, game
 
     # -- the window's requests ---------------------------------------------------------------------
     def call(self, name, payload=None):
@@ -363,6 +453,14 @@ class MultiAPI:
         return out
 
     def do_snapshot(self):
+        return {}
+
+    def do_feed_seen(self):
+        """The Activité tab was opened: everything in it is now read."""
+        ids = [e["id"] for e in self.cache.get("events") or []]
+        if ids:
+            self.store["feed_seen"] = max(ids + [self.store.get("feed_seen") or 0])
+            self._save()
         return {}
 
     def do_refresh(self):
@@ -422,7 +520,8 @@ class MultiAPI:
 
     def do_sign_in(self, username, password):
         self.server.sign_in(self._check_credentials(username, password), password)
-        self.store = {"sent": [], "first_sync_done": False, "targets": self.store.get("targets", {})}
+        self.store = dict({"sent": [], "first_sync_done": False},
+                          **{k: self.store[k] for k in KEPT_ON_SIGN_IN if k in self.store})
         self._save()
         for key in self.cache:
             self.cache[key] = None if key in ("profile", "group") else []
@@ -481,12 +580,7 @@ class MultiAPI:
     def pomodoro_alert(self):
         """For Anki's own little message when the window is closed: the text
         to show when my shared pomodoro changes phase, else None."""
-        try:
-            g = games.Game(self.cache.get("members") or [], [], self.cache.get("game_events") or [],
-                           datetime.date.fromisoformat(self.today()), self.server.user_id, now=self.now())
-            pomo = next((p for p in g.pomodoros() if p["active"] and self.server.user_id in p["players"]), None)
-        except Exception:
-            return None
+        pomo = self.my_pomodoro()
         if not pomo:
             self._pomo_phase = None
             return None

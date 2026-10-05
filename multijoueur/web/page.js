@@ -46,7 +46,13 @@
   const typing = () => { const a = document.activeElement; return a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName); };
   function softRender() { if (typing()) pendingRender = true; else render(); }
   document.addEventListener('focusout', () => setTimeout(() => { if (pendingRender && !typing()) { pendingRender = false; render(); } }, 50));
-  window.MJ = { update(snap) { S = snap; softRender(); } };
+  function go(t) {
+    tab = t;
+    if (t === 'activite' && S.unread) { S.unread = 0; callPy && callPy('feed_seen', {}); }
+    render();
+    window.scrollTo(0, 0);
+  }
+  window.MJ = { update(snap) { S = snap; softRender(); }, go };
 
   // ---------------------------------------------------------------- helpers
   const $ = (s) => document.querySelector(s);
@@ -104,15 +110,18 @@
     if (!S.group) { app.innerHTML = top + groupChoice(); bindGroup(); return; }
     const tabs = [['accueil', 'Accueil'], ['defis', 'Défis'], ['classement', 'Classement'], ['stats', 'Stats'], ['activite', 'Activité']];
     const screens = { accueil: screenHome, defis: screenChallenges, classement: screenRanking, stats: screenStats, activite: screenFeed, profil: screenProfile };
-    app.innerHTML = top + `<nav class="tabs">${tabs.map(([id, l]) => `<button class="tab ${tab === id ? 'active' : ''}" data-tab="${id}">${l}</button>`).join('')}</nav>` + screens[tab]();
-    app.querySelectorAll('[data-tab]').forEach((b) => { b.onclick = () => { tab = b.dataset.tab; render(); }; });
+    const unread = tab === 'activite' ? 0 : (S.unread || 0);
+    const badge = (id) => (id === 'activite' && unread ? `<span class="unread">${unread > 9 ? '9+' : unread}</span>` : '')
+      + (id === 'defis' && todo().length ? '<span class="unread dotonly"></span>' : '');
+    app.innerHTML = top + `<nav class="tabs">${tabs.map(([id, l]) => `<button class="tab ${tab === id ? 'active' : ''}" data-tab="${id}">${l}${badge(id)}</button>`).join('')}</nav>` + screens[tab]();
+    app.querySelectorAll('[data-tab]').forEach((b) => { b.onclick = () => go(b.dataset.tab); });
     bindCommon();
     if (tab === 'accueil') { bindHome(); bindPomodoro(); }
     if (tab === 'defis') bindChallenges();
     if (tab === 'stats') bindStats();
     if (tab === 'classement') bindRanking();
     if (tab === 'activite') bindFeed();
-    if (tab === 'profil') { bindProfile(); bindLeave(); bindAccount(); bindFrames(); }
+    if (tab === 'profil') { bindProfile(); bindLeave(); bindAccount(); bindFrames(); bindSettings(); }
   }
 
   function header() {
@@ -188,7 +197,7 @@
     if (!v) return '<div class="card muted">Chargement du groupe…</div>';
     const me = players().find((p) => p.me);
     const others = players().filter((p) => !p.me);
-    return duelCard(v) + pomodoroCard() + `<div class="grid g2">${[me, ...others].filter(Boolean).map(todayCard).join('')}</div>`
+    return todoCard() + duelCard(v) + pomodoroCard() + `<div class="grid g2">${[me, ...others].filter(Boolean).map(todayCard).join('')}</div>`
       + (me ? pointsCard(me) : '') + togetherCards(v);
   }
 
@@ -201,7 +210,50 @@
     return `<div class="card hero"><h2>Duel de la semaine <span class="right">${left > 0 ? `se termine dimanche · ${left} ${plural(left, 'jour', 'jours')}` : 'dernier jour !'}</span></h2>
       <div class="duel">${side(a)}<div class="vs">VS</div>${side(b)}</div>
       <div class="split-bar"><div style="flex-grow:${a.week.points || 1};background:${color(a)}"></div><div style="flex-grow:${b.week.points || 1};background:${color(b)}"></div></div>
-      <div class="tiny muted" style="text-align:center">L'anneau montre la journée d'aujourd'hui · les points comptent depuis lundi</div></div>`;
+      <div class="tiny muted" style="text-align:center">L'anneau montre la journée d'aujourd'hui · les points comptent depuis lundi</div>
+      ${duelHistory(a, b)}</div>`;
+  }
+
+  function duelHistory(a, b) {
+    const d = G() && G().duels;
+    if (!d || !d.weeks.length) return '';
+    const last = d.weeks[0];
+    const lastText = last.winner ? `Semaine dernière : <b>${pseudo(last.winner)}</b> a gagné (${Object.entries(last.scores).map(([id, v]) => `${pseudo(id)} ${v}`).join(' – ')})`
+      : 'Semaine dernière : égalité';
+    const marks = d.weeks.slice(0, 8).reverse().map((w) => { const p = w.winner && player(w.winner);
+      return `<span class="wk" title="Semaine du ${frDate(w.monday)}" style="background:${p ? color(p) : 'var(--line)'}"></span>`; }).join('');
+    return `<div class="duel-hist"><div class="small"><b style="color:${color(a)}">${d.wins[a.id] || 0}</b> – <b style="color:${color(b)}">${d.wins[b.id] || 0}</b>
+      <span class="tiny muted">duels gagnés</span> <span class="wks">${marks}</span></div><div class="tiny muted">${lastText}</div></div>`;
+  }
+
+  // things waiting for me, on top of Accueil (and a dot on the Défis tab)
+  function todo() {
+    const g = G();
+    if (!g || !S.view) return [];
+    const out = [];
+    g.bets.filter((b) => b.status === 'pending' && b.opponent === S.me).forEach((b) => out.push({ kind: 'bet', b }));
+    if (g.pomodoro && !g.pomodoro.players.includes(S.me)) out.push({ kind: 'pomo', p: g.pomodoro });
+    g.challenges.filter((c) => c.status === 'active' && c.days_left <= 2 && c.type !== 'race').forEach((c) => {
+      const mine = c.players.find((x) => x.id === S.me);
+      if (c.type === 'boss' ? c.hp_left > 0 : mine && !mine.done) out.push({ kind: 'challenge', c });
+    });
+    return out;
+  }
+
+  function todoCard() {
+    const items = todo();
+    if (!items.length) return '';
+    const row = (it) => {
+      if (it.kind === 'bet') return `<div class="todo-row"><div class="small">💰 <b>${pseudo(it.b.by)}</b> te propose un pari de <b>${it.b.stake} pts</b></div>
+        <div class="row"><button class="btn primary small" data-bet="${it.b.id}" data-yes="1">Accepter</button><button class="btn small" data-bet="${it.b.id}" data-yes="0">Refuser</button><button class="btn small" data-go="defis">Voir</button></div></div>`;
+      if (it.kind === 'pomo') return `<div class="todo-row"><div class="small">🍅 <b>${pseudo(it.p.by)}</b> a lancé un pomodoro</div>
+        <div class="row"><button class="btn primary small" data-pomo-join="${it.p.id}">Rejoindre</button></div></div>`;
+      const c = it.c;
+      const left = c.type === 'boss' ? `encore ${fmt(c.hp_left)} PV` : (() => { const m = c.players.find((x) => x.id === S.me); return `${fmt(m.value)} / ${fmt(c.target)}`; })();
+      return `<div class="todo-row"><div class="small">${TYPE_ICON[c.type]} <b>${esc(challengeTitle(c))}</b> se termine ${c.days_left <= 1 ? "aujourd'hui" : 'demain'} · ${left}</div>
+        <div class="row"><button class="btn small" data-go="defis">Voir</button></div></div>`;
+    };
+    return `<div class="card todo"><h2>À faire <span class="right">${items.length}</span></h2>${items.map(row).join('')}</div>`;
   }
 
   function todayCard(p) {
@@ -241,6 +293,10 @@
   }
 
   function bindHome() {
+    document.querySelectorAll('[data-go]').forEach((b) => { b.onclick = () => go(b.dataset.go); });
+    document.querySelectorAll('[data-bet]').forEach((b) => {
+      b.onclick = async () => { b.disabled = true; const r = await api('answer_bet', { ref: parseInt(b.dataset.bet, 10), accept: b.dataset.yes === '1' }); if (r.ok) toast(b.dataset.yes === '1' ? '🤝 Pari accepté' : 'Pari refusé'); };
+    });
     document.querySelectorAll('[data-nudge]').forEach((b) => {
       b.onclick = async () => { b.disabled = true; const r = await api('encourage', { player_id: b.dataset.nudge }); if (r.ok) toast('💪 Encouragement envoyé'); };
     });
@@ -311,9 +367,29 @@
       <div class="chips">${(S.messages || []).map((m) => `<button class="chip" data-msg="${m.code}" ${left ? '' : 'disabled'}>${esc(m.text)}</button>`).join('')}</div></div>`;
   }
 
+  function momentText(m) {
+    if (m.type === 'challenge') {
+      const t = `${TYPE_ICON[m.challenge]} <b>${esc(challengeTitle({ ...m, type: m.challenge }))}</b>`;
+      if (m.challenge === 'boss') return m.status === 'won' ? `${t} : vaincu ensemble ! 🎉` : `${t} : le boss a survécu`;
+      if (m.challenge === 'race') return m.winners.length ? `${t} : <b>${m.winners.map(pseudo).join(' et ')}</b> gagne la course 🏁` : `${t} : personne n'a fini la course`;
+      return m.winners.length ? `${t} : réussi par <b>${m.winners.map(pseudo).join(', ')}</b> ✅` : `${t} : raté cette fois`;
+    }
+    if (m.type === 'bet') return m.winner ? `💰 Pari : <b>${pseudo(m.winner)}</b> gagne ${m.stake} pts` : '💰 Pari : égalité, personne ne perd';
+    if (m.type === 'duel') return `⚔️ Duel de la semaine gagné par <b>${pseudo(m.winner)}</b> (${Object.entries(m.scores).map(([id, v]) => `${pseudo(id)} ${v}`).join(' – ')})`;
+    if (m.type === 'season') return `🥇 <b>${pseudo(m.winner)}</b> : ${esc(m.label)}`;
+    return '';
+  }
+
+  function resultsCard() {
+    const ms = (G() && G().moments) || [];
+    if (!ms.length) return '';
+    return `<div class="card"><h2>Résultats <span class="right">défis, paris, duels, saisons</span></h2>
+      ${ms.slice(0, 6).map((m) => `<div class="small result"><span class="tiny muted">${frDate(m.day)}</span> ${momentText(m)}</div>`).join('')}</div>`;
+  }
+
   function screenFeed() {
-    if (!S.feed.length) return messagesCard() + '<div class="card muted">Rien pour l\'instant. Les journées finies, records, séries, défis et messages apparaîtront ici.</div>';
-    return messagesCard() + `<div class="card list">${S.feed.map((e) => {
+    if (!S.feed.length) return messagesCard() + resultsCard() + '<div class="card muted">Rien pour l\'instant. Les journées finies, records, séries, défis et messages apparaîtront ici.</div>';
+    return messagesCard() + resultsCard() + `<div class="card list">${S.feed.map((e) => {
       const p = player(e.user_id);
       return `<div class="feed-item"><div class="dot sm" style="background:${p ? color(p) : 'var(--card2)'}">${esc(e.who.avatar)}</div><div style="flex:1;min-width:0">
       <div><b>${esc(e.who.pseudo)}</b> ${eventText(e)} <span class="tiny muted">· ${ago(e.at)}</span></div>
@@ -404,9 +480,30 @@
 
   // -- profile (avatar button)
   function screenProfile() {
-    return levelCard() + profileForm(false) + `<div class="card"><h2>Mon groupe</h2>
+    return levelCard() + settingsCard() + profileForm(false) + `<div class="card"><h2>Mon groupe</h2>
       <div>« ${esc(S.group.name)} » · code à donner à tes amis : <span class="code">${esc(S.group.code)}</span></div>
       <div><button class="btn small" id="g-leave">Quitter le groupe</button></div></div>` + accountCard();
+  }
+
+  const CORNER_NAME = { 'haut-gauche': 'En haut à gauche', 'bas-gauche': 'En bas à gauche', 'haut-droite': 'En haut à droite', 'bas-droite': 'En bas à droite' };
+  function settingsCard() {
+    const st = S.settings || {};
+    const sw = (key, label, help) => `<label class="switch-row"><input type="checkbox" data-set="${key}" ${st[key] ? 'checked' : ''}>
+      <span><b>${label}</b><br><span class="tiny muted">${help}</span></span></label>`;
+    return `<div class="card"><h2>Réglages <span class="right">sur cet ordinateur</span></h2>
+      <div class="small muted">Pendant tes révisions, dans un coin de l'écran :</div>
+      ${sw('presence', 'Point « il révise »', 'un petit point quand un ami révise en même temps que toi')}
+      ${sw('bubbles', 'Bulles', 'messages, encouragements, nouveaux défis, paris et pomodoros (clique dessus pour ouvrir)')}
+      ${sw('pomo_pill', 'Minuteur du pomodoro', 'le temps restant quand tu es dans un pomodoro')}
+      ${sw('sound', 'Son du pomodoro', 'un petit bip quand vient la pause ou la reprise')}
+      <div class="row"><label for="set-corner">Coin de l'écran</label><select id="set-corner">${(S.corners || []).map((c) => `<option value="${c}" ${st.corner === c ? 'selected' : ''}>${CORNER_NAME[c] || c}</option>`).join('')}</select></div>
+      <div class="tiny muted">À gauche par défaut, pour ne pas cacher ton casino.</div></div>`;
+  }
+
+  function bindSettings() {
+    document.querySelectorAll('[data-set]').forEach((el) => { el.onchange = async () => { const r = await api('save_settings', { [el.dataset.set]: el.checked }); if (r.ok) toast('✅ Réglage enregistré'); }; });
+    const c = $('#set-corner');
+    if (c) c.onchange = async () => { const r = await api('save_settings', { corner: c.value }); if (r.ok) toast('✅ ' + CORNER_NAME[c.value]); };
   }
 
   function bindLeave() {
@@ -537,10 +634,28 @@
         <div class="row"><label>Mise</label><input type="number" data-f="stake" value="${f.stake}" min="5" max="200" style="width:90px"><span class="tiny muted">pts (tu as ${fmt((gp(S.me) || {}).wallet || 0)})</span></div>${dates()}`;
       help = "L'autre doit accepter avant le début. Le gagnant prend la mise au perdant. Égalité : personne ne perd.";
     }
-    return `<div class="card"><h2>Nouveau défi</h2>
+    return quickCard() + `<div class="card"><h2>Nouveau défi</h2>
       <div class="chips">${kinds.map(([k, l]) => `<button class="chip ${f.kind === k ? 'on' : ''}" data-kind="${k}">${l}</button>`).join('')}</div>
       ${fields}<div class="tiny muted">${help}</div>
       <div><button class="btn primary" id="launch">${f.kind === 'bet' ? 'Proposer le pari' : 'Lancer le défi'}</button></div></div>`;
+  }
+
+  // one click: ready-made défis, sized for the group
+  function quick() {
+    const n = Math.max(1, players().length), t = today();
+    const sun = sunday() === t ? addDays(t, 7) : sunday();
+    const d = span(t, sun);
+    return [
+      { id: 'boss', icon: '🐉', label: `Boss jusqu'à dimanche`, p: { type: 'boss', target: n * d * 12, start: t, end: sun } },
+      { id: 'zero', icon: '🧹', label: 'Semaine zéro retard', p: { type: 'zero', target: Math.min(5, d), start: t, end: addDays(t, 6) } },
+      { id: 'days', icon: '🎯', label: '5 journées finies en 7 jours', p: { type: 'custom', metric: 'days', target: 5, start: t, end: addDays(t, 6) } },
+      { id: 'race', icon: '🏁', label: 'Course à 100 points', p: { type: 'race', target: 100, start: t } },
+    ];
+  }
+
+  function quickCard() {
+    return `<div class="card"><h2>Défis rapides <span class="right">un clic, tout le groupe</span></h2>
+      <div class="chips">${quick().map((q) => `<button class="chip" data-quick="${q.id}">${q.icon} ${esc(q.label)}</button>`).join('')}</div></div>`;
   }
 
   function screenChallenges() {
@@ -567,6 +682,15 @@
         if (k === 'metric' || k === 'betType' || ((k === 'start' || k === 'end') && form.kind === 'zero')) render();
       };
       el.oninput = set; el.onchange = set;
+    });
+    document.querySelectorAll('[data-quick]').forEach((b) => {
+      b.onclick = async () => {
+        const q = quick().find((x) => x.id === b.dataset.quick);
+        if (!confirm(`Lancer « ${q.label} » pour tout le groupe ?`)) return;
+        b.disabled = true;
+        const r = await api('create_challenge', q.p);
+        if (r.ok) toast('🚀 Défi lancé !');
+      };
     });
     const sug = $('#suggest');
     if (sug) sug.onclick = () => { form.target = players().length * span(form.start, form.end) * 12; render(); };
@@ -632,6 +756,7 @@
   }
 
   function beep() {
+    if (S.settings && S.settings.sound === false) return;
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       [0, 0.25].forEach((t) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = 880; g.gain.value = 0.08;
@@ -731,6 +856,7 @@
     document.querySelectorAll('[data-frame]').forEach((b) => { b.onclick = async () => { const r = await api('set_frame', { frame: b.dataset.frame }); if (r.ok) toast('🖼️ Cadre changé'); }; });
   }
 
+  if (S.open_tab) tab = S.open_tab;
   render();
-  ready.then(() => { if (!S.last_sync) api('refresh'); });
+  ready.then(() => { if (!S.last_sync) api('refresh'); if (tab === 'activite') callPy('feed_seen', {}); });
 })();

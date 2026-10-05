@@ -6,4 +6,4 @@
 
 **indicateur_revisions** : pendant les révisions, afficher le petit point quand un autre membre révise aussi, et les bulles quand il t'envoie un message (true / false).
 
-**indicateur_coin** : où les mettre : "haut-droite", "haut-gauche", "bas-droite" ou "bas-gauche".
+**indicateur_coin** : où les mettre par défaut : "haut-gauche" (à gauche, pour ne pas gêner les casinos), "bas-gauche", "haut-droite" ou "bas-droite". Plus simple : fenêtre 👥 → ton avatar → Réglages (ce choix-là gagne).
