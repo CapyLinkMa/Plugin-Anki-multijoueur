@@ -86,7 +86,9 @@ v5 (Xyroob) : point « il/elle révise » et bulles de messages pendant les rév
 Tout ce qui a été choisi est fait. Idées non choisies : 4, 10, 18, 30, et 31-33 (pont vers les casinos).
 
 ## En cours
-- (personne)
+- CapyLinkMa (Claude, 2026-10-05) : grosse MAJ v6 (notifications à gauche, réglages dans la fenêtre,
+  bulles cliquables + minuteur pomodoro pendant les révisions, « À faire », historique des duels, fil enrichi,
+  défis rapides, non-lus). Merci d'attendre le push avant de toucher à api.py / page.js / presence.*.
 
 ## Pour Claude
 - Plugin Anki (Python 3.13, Qt6 via `aqt`). Pas de pip dans Anki : seulement la bibliothèque
