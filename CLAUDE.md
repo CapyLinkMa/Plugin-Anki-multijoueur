@@ -75,6 +75,12 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
   **défis rapides** en un clic, pastille de non-lus sur Activité (`feed_seen`). `snapshot()` garde en mémoire
   les calculs tant que rien n'a changé (`api._computed`).
 
+- **v7** (2026-10-05, Xyroob) : **messages écrits librement** (`msg` avec `{text}` au lieu de `{code}`, 300 caractères
+  max, `games.clean_message` / `games.message_text` ; les messages rapides restent), limite anti-spam 150/jour.
+  Point « il/elle révise » plus visible (8 px, halo qui respire, pastille plus opaque). Minuteur du pomodoro :
+  barre de progression, petit « ping » au changement de phase, un clic le réduit à 🍅 (retenu dans le
+  `localStorage` de l'écran de révision). Schéma inchangé.
+
 ## Travailler à deux sur ce dépôt
 - Avant de commencer : `git pull`. En finissant une partie : commit clair en français + `git push`.
 - Noter dans « En cours » ci-dessous ce sur quoi on travaille, pour ne pas faire la même chose.
@@ -94,6 +100,7 @@ v4 (CapyLinkMa) : 6 bilan mensuel, 8 défi sur mesure, 9 course, 11 zéro retard
 v5 (Xyroob) : point « il/elle révise » et bulles de messages pendant les révisions.
 v6 (CapyLinkMa) : notifications à gauche, réglages, bulles cliquables + minuteur, À faire, historique des duels,
 résultats, défis rapides, non-lus.
+v7 (Xyroob) : messages écrits librement, point vert plus visible, minuteur du pomodoro réductible.
 
 ## Reste à faire (choisi)
 Tout ce qui a été choisi est fait. Idées non choisies : 4, 10, 18, 30, et 31-33 (pont vers les casinos).

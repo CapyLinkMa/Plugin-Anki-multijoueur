@@ -1,7 +1,7 @@
 /* Pendant les révisions : mjLive({corner, sound, live: [{pseudo, avatar}],
  *   messages: [{pseudo, avatar, text, verb, click}], pomo: {id, start, work, rest, rounds} | null})
  * À gauche par défaut (les casinos sont à droite). Une bulle cliquable ouvre la fenêtre 👥
- * (pycmd « mjlive:… »). Le minuteur du pomodoro avance seul, chaque seconde. */
+ * (pycmd « mjlive:… »). Le minuteur du pomodoro avance seul, chaque seconde ; un clic le réduit à 🍅. */
 (function(){
   if(window.mjLive)return;
   var pomo=null,sound=true,lastPhase=null,timer=null;
@@ -9,18 +9,20 @@
   function root(){
     var r=document.getElementById('mj-live');
     if(!r){r=document.createElement('div');r.id='mj-live';r.className='mj-haut-gauche';
-      r.innerHTML='<div class="mj-pill"></div><div class="mj-pomo"></div><div class="mj-msgs"></div>';document.body.appendChild(r);}
+      r.innerHTML='<div class="mj-pill"></div><div class="mj-pomo"></div><div class="mj-msgs"></div>';document.body.appendChild(r);
+      r.querySelector('.mj-pomo').onclick=function(){mini(!mini());tick();};}
     return r;
   }
+  function mini(v){try{if(v===undefined)return localStorage.getItem('mj-pomo-mini')==='1';localStorage.setItem('mj-pomo-mini',v?'1':'0');}catch(e){}return false;}
   function send(cmd){try{if(window.pycmd)pycmd(cmd);}catch(e){}}
   function bubble(m){
     var box=root().querySelector('.mj-msgs'),b=document.createElement('div');b.className='mj-msg'+(m.click?' mj-click':'');
-    b.innerHTML='<span class="mj-av">'+esc(m.avatar)+'</span><span><b>'+esc(m.pseudo)+'</b>'+(m.verb?' ':' · ')+esc(m.text)+'</span>';
+    b.innerHTML='<span class="mj-av">'+esc(m.avatar)+'</span><span class="mj-txt"><b>'+esc(m.pseudo)+'</b>'+(m.verb?' ':' · ')+esc(m.text)+'</span>';
     if(m.click)b.onclick=function(){send('mjlive:'+m.click);b.classList.add('out');};
     box.appendChild(b);
     while(box.children.length>3)box.removeChild(box.firstChild);
     requestAnimationFrame(function(){requestAnimationFrame(function(){b.classList.add('on');});});
-    var stay=m.click&&m.click.indexOf('pomo')===0?15000:8000;
+    var stay=m.click&&m.click.indexOf('pomo')===0?15000:Math.min(16000,6000+String(m.text||'').length*60);   // long messages stay longer
     setTimeout(function(){b.classList.remove('on');b.classList.add('out');setTimeout(function(){if(b.parentNode)b.parentNode.removeChild(b);},600);},stay);
   }
   function beep(){
@@ -30,10 +32,10 @@
   }
   function phase(p){
     var el=(Date.now()-new Date(p.start).getTime())/1000,cy=(p.work+p.rest)*60;
-    if(el<0)return{ph:'work',r:1,left:-el};
-    if(el>=cy*p.rounds)return{ph:'over',r:p.rounds,left:0};
+    if(el<0)return{ph:'work',r:1,left:-el,len:p.work*60};
+    if(el>=cy*p.rounds)return{ph:'over',r:p.rounds,left:0,len:1};
     var n=Math.floor(el/cy),into=el-n*cy;
-    return into<p.work*60?{ph:'work',r:n+1,left:p.work*60-into}:{ph:'rest',r:n+1,left:cy-into};
+    return into<p.work*60?{ph:'work',r:n+1,left:p.work*60-into,len:p.work*60}:{ph:'rest',r:n+1,left:cy-into,len:p.rest*60};
   }
   function tick(){
     var box=root().querySelector('.mj-pomo');
@@ -41,12 +43,15 @@
     var f=phase(pomo);
     if(f.ph==='over'){box.classList.remove('on');pomo=null;beep();return;}
     var key=f.ph+f.r;
-    if(lastPhase&&key!==lastPhase)beep();
+    var changed=lastPhase&&key!==lastPhase;
+    if(changed)beep();
     lastPhase=key;
-    var m=Math.floor(f.left/60),s=Math.floor(f.left%60);
-    box.className='mj-pomo on '+f.ph;
+    var m=Math.floor(f.left/60),s=Math.floor(f.left%60),small=mini();
+    box.className='mj-pomo on '+f.ph+(small?' mj-mini':'')+(changed||box.classList.contains('mj-ping')?' mj-ping':'');
+    box.title=(f.ph==='work'?'Travail':'Pause')+' · '+m+' min restantes · clique pour '+(small?'agrandir':'réduire');
     box.innerHTML='<span>'+(f.ph==='work'?'🍅':'☕')+'</span><b>'+m+':'+(s<10?'0':'')+s+'</b><span class="mj-lab2">'+
-      (f.ph==='work'?'travail':'pause')+' · '+f.r+'/'+pomo.rounds+'</span>';
+      (f.ph==='work'?'travail':'pause')+' · '+f.r+'/'+pomo.rounds+'</span><i class="mj-bar" style="width:'+Math.round(100*(1-f.left/f.len))+'%"></i>';
+    if(changed)setTimeout(function(){box.classList.remove('mj-ping');},3600);
   }
   window.mjLive=function(d){
     var r=root(),live=d.live||[],p=r.querySelector('.mj-pill');

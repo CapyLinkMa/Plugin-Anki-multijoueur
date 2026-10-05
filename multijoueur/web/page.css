@@ -163,3 +163,8 @@ details.card[open] { gap: 10px; }
 .switch-row input { margin-top: 3px; accent-color: var(--me); width: 16px; height: 16px; flex-shrink: 0; }
 .result { padding: 4px 0; border-top: 1px solid var(--line); }
 .result:first-of-type { border-top: none; }
+.chat { display: flex; gap: 8px; align-items: flex-end; }
+.chat textarea { flex: 1; min-height: 34px; max-height: 120px; resize: none; padding: 7px 12px; border-radius: 12px; font: inherit;
+  background: var(--card2); color: var(--ink); border: 1px solid var(--line); }
+.chat textarea:focus { outline: none; border-color: var(--me); }
+.bubble { white-space: pre-wrap; overflow-wrap: anywhere; }

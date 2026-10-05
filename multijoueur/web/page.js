@@ -353,7 +353,7 @@
       case 'record': return `a battu son record : <b>${fmt(p.cards)}</b> cartes en une journée 🏅`;
       case 'streak': return `est à <b>${p.days} jours</b> de série 🔥`;
       case 'encourage': return `encourage <b>${esc(e.to || '?')}</b> à finir sa journée 💪`;
-      case 'msg': return `<span class="bubble">${esc(((S.messages || []).find((m) => m.code === p.code) || { text: '…' }).text)}</span>`;
+      case 'msg': return `<span class="bubble">${esc(p.text || ((S.messages || []).find((m) => m.code === p.code) || { text: '…' }).text)}</span>`;
       case 'challenge': return `lance ${p.solo ? 'un défi perso' : 'un défi'} : <b>${esc(challengeTitle(p))}</b> ${TYPE_ICON[p.type] || '🎯'}`;
       case 'bet': return `propose un pari de <b>${p.stake} pts</b> à <b>${pseudo(p.opponent)}</b> 💰`;
       case 'pomo': return `lance un pomodoro (${p.work} min × ${p.rounds}) 🍅`;
@@ -361,9 +361,13 @@
     }
   }
 
+  let draft = '';
   function messagesCard() {
     const left = S.messages_left == null ? 30 : S.messages_left;
-    return `<div class="card"><h2>Message rapide <span class="right">${left} ${plural(left, 'restant', 'restants')} aujourd'hui</span></h2>
+    return `<div class="card"><h2>Messages</h2>
+      <form class="chat" id="chat-form"><textarea id="chat-text" rows="1" maxlength="${S.message_max || 300}" placeholder="Écris ce que tu veux…" ${left ? '' : 'disabled'}>${esc(draft)}</textarea>
+        <button class="btn primary small" id="chat-send" ${left ? '' : 'disabled'}>Envoyer</button></form>
+      <div class="tiny muted" style="margin:2px 0 8px">Entrée pour envoyer · Maj + Entrée pour aller à la ligne${left < 20 ? ` · encore ${left} aujourd'hui` : ''}</div>
       <div class="chips">${(S.messages || []).map((m) => `<button class="chip" data-msg="${m.code}" ${left ? '' : 'disabled'}>${esc(m.text)}</button>`).join('')}</div></div>`;
   }
 
@@ -403,6 +407,24 @@
     document.querySelectorAll('[data-msg]').forEach((b) => {
       b.onclick = async () => { b.disabled = true; const r = await api('send_message', { code: b.dataset.msg }); if (r.ok) toast('💬 Message envoyé'); };
     });
+    const box = $('#chat-text'), form = $('#chat-form');
+    if (box && form) {
+      const grow = () => { box.style.height = 'auto'; box.style.height = Math.min(box.scrollHeight, 120) + 'px'; };
+      grow();
+      box.oninput = () => { draft = box.value; grow(); };
+      box.onkeydown = (ev) => { if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); form.requestSubmit(); } };
+      form.onsubmit = async (ev) => {
+        ev.preventDefault();
+        if (!box.value.trim()) return;
+        $('#chat-send').disabled = true;
+        const text = box.value;
+        draft = '';
+        box.blur();
+        const r = await api('send_message', { text });
+        if (r.ok) toast('💬 Message envoyé'); else { draft = text; render(); }
+        const again = $('#chat-text'); if (again) again.focus();
+      };
+    }
     document.querySelectorAll('[data-react]').forEach((b) => {
       b.onclick = () => api('react', { event_id: parseInt(b.dataset.react, 10), emoji: b.dataset.emoji, on: !b.classList.contains('on') });
     });

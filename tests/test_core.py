@@ -127,6 +127,45 @@ class TwoPlayers(unittest.TestCase):
                "created_at": "2020-01-01T00:00:00+00:00"}     # Anki was closed for ages: not shown
         self.assertEqual(med.live_view(med.cache["members"], [old], 1)["messages"], [])
 
+    def test_pomodoro_reaches_me_during_reviews(self):
+        """Le pomodoro lancé par l'autre : bulle « rejoindre » puis minuteur, sans attendre la synchro complète."""
+        med, bio = self.player("med", []), self.player("bio", [])
+        med.call("save_profile", {"pseudo": "Slava", "avatar": "🦫", "daily_goal": 300})
+        bio.call("save_profile", {"pseudo": "Ami", "avatar": "🧬", "daily_goal": 60})
+        bio.call("join_group", {"code": med.call("create_group", {"name": "Duo"})["code"]})
+        med.sync(), bio.sync()
+        seen = []
+        med.live_check(seen.append)
+        self.assertTrue(bio.call("start_pomodoro", {"work": 25, "rest": 5, "rounds": 4})["ok"])
+        med.live_check(seen.append)                       # no full sync in between
+        bubble = seen[-1]["messages"][-1]
+        self.assertTrue(bubble["click"].startswith("pomo:"))
+        self.assertIsNone(seen[-1]["pomo"])               # not in it yet: no timer, just the invitation
+        ref = int(bubble["click"].split(":")[1])
+        self.assertTrue(med.call("join_pomodoro", {"ref": ref})["ok"])
+        med.live_check(seen.append)
+        self.assertEqual(seen[-1]["pomo"]["id"], ref)
+
+    def test_free_text_messages(self):
+        """Messages écrits librement : envoyés, montrés en bulle et dans le fil."""
+        med, bio = self.player("med", []), self.player("bio", [])
+        med.call("save_profile", {"pseudo": "Slava", "avatar": "🦫", "daily_goal": 300})
+        bio.call("save_profile", {"pseudo": "Ami", "avatar": "🧬", "daily_goal": 60})
+        bio.call("join_group", {"code": med.call("create_group", {"name": "Duo"})["code"]})
+        med.sync(), bio.sync()
+        seen = []
+        med.live_check(seen.append)
+        self.assertTrue(bio.call("send_message", {"text": "  T'as fini   le cardio ?\n\n\n\nMoi presque <b>!</b> "})["ok"])
+        self.assertFalse(bio.call("send_message", {"text": "   "})["ok"])
+        self.assertFalse(bio.call("send_message", {"text": "x" * 301})["ok"])
+        self.assertTrue(bio.call("send_message", {"code": "go"})["ok"])     # the quick ones still work
+        med.live_check(seen.append)
+        self.assertEqual([m["text"] for m in seen[-1]["messages"]],
+                         ["T'as fini le cardio ?\n\nMoi presque <b>!</b>", "On s'y met ? 📚"])
+        med.sync()
+        msgs = [e["payload"] for e in med.snapshot()["feed"] if e["kind"] == "msg"]
+        self.assertIn({"text": "T'as fini le cardio ?\n\nMoi presque <b>!</b>"}, msgs)
+
     def test_create_join_sync_and_react(self):
         today = datetime.date.today()
         mk = lambda n, c: [{"day": (today - datetime.timedelta(days=i)).isoformat(), "cards": c, "minutes": 30,

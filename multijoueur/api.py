@@ -342,7 +342,7 @@ class MultiAPI:
         if kind == "encourage":
             return ("t'encourage ! 💪", "open") if payload.get("to") == me else (None, None)
         if kind == "msg":
-            return games.MESSAGE_TEXT.get(payload.get("code")), "open"
+            return games.message_text(payload), "open"
         if kind == "bet" and payload.get("opponent") == me:
             return f"te propose un pari de {payload.get('stake')} pts 💰 (clique pour répondre)", "accueil"
         if kind == "challenge" and not payload.get("solo"):
@@ -414,6 +414,7 @@ class MultiAPI:
                 "update": self.update, "game": game,
                 "messages": [{"code": k, "text": t} for k, t in games.MESSAGES],
                 "messages_left": max(0, games.MESSAGES_PER_DAY - self._sent_today("msg")),
+                "message_max": games.MESSAGE_MAX,
                 "now": self.now().isoformat(), "unread": unread, "settings": self.settings(),
                 "corners": list(CORNERS), "open_tab": self._take_open_tab()}
 
@@ -668,14 +669,22 @@ class MultiAPI:
         self._post("pomo_stop", {"ref": ref})
         return {}
 
-    def do_send_message(self, code):
-        if code not in games.MESSAGE_TEXT:
+    def do_send_message(self, code=None, text=None):
+        """A ready-made message (`code`) or anything written freely (`text`)."""
+        if text is not None:
+            text, err = games.clean_message(text)
+            if err:
+                return {"ok": False, "error": err}
+            payload = {"text": text}
+        elif code in games.MESSAGE_TEXT:
+            payload = {"code": code}
+        else:
             return {"ok": False, "error": "Message inconnu."}
         if self._sent_today("msg") >= games.MESSAGES_PER_DAY:
             return {"ok": False, "error": "Assez de messages pour aujourd'hui 🙂"}
         self.store["sent"].append(f"msg:{self.today()}:{len(self.store['sent'])}")
         self._save()
-        self._post("msg", {"code": code})
+        self._post("msg", payload)
         return {}
 
     def do_set_frame(self, frame):

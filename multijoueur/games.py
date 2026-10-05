@@ -15,7 +15,7 @@ Game events (kind -> payload):
   pomo        {work, rest, rounds}  (starts at created_at)        - a shared pomodoro
   pomo_join / pomo_stop {ref}
   frame       {frame}                                             - the profile frame a player picked
-  msg         {code}                                              - a short ready-made message
+  msg         {code} or {text}                                    - a ready-made message, or one written freely
 
 Fairness (CLAUDE.md): group défis and bets use the fair daily points of
 group.day_points or "days finished", never raw card counts; a card target
@@ -57,7 +57,30 @@ MESSAGES = [
     ("exam", "Examen bientôt 😬"), ("morning", "Demain matin, on s'y remet ☀️"), ("night", "Bonne nuit 🌙"),
 ]
 MESSAGE_TEXT = dict(MESSAGES)
-MESSAGES_PER_DAY = 30
+MESSAGES_PER_DAY = 150    # only against a stuck key: a real conversation never gets there
+MESSAGE_MAX = 300         # characters in a message written freely
+
+
+def message_text(payload):
+    """What a `msg` event says: the text written freely, or the ready-made message's text."""
+    payload = payload or {}
+    text = payload.get("text")
+    if isinstance(text, str) and text.strip():
+        return text.strip()[:MESSAGE_MAX]
+    return MESSAGE_TEXT.get(payload.get("code"))
+
+
+def clean_message(text):
+    """-> (the message to send, None) or (None, the reason it can't be sent)."""
+    lines = [" ".join(line.split()) for line in str(text or "").splitlines()]
+    text = "\n".join(lines).strip()
+    while "\n\n\n" in text:
+        text = text.replace("\n\n\n", "\n\n")
+    if not text:
+        return None, "Écris d'abord ton message."
+    if len(text) > MESSAGE_MAX:
+        return None, f"Message trop long ({len(text)} caractères, {MESSAGE_MAX} au plus)."
+    return text, None
 
 MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre",
           "novembre", "décembre"]
