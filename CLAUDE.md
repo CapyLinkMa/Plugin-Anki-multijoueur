@@ -81,6 +81,11 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
   barre de progression, petit « ping » au changement de phase, un clic le réduit à 🍅 (retenu dans le
   `localStorage` de l'écran de révision). Schéma inchangé.
 
+- **v8** (2026-10-06, CapyLinkMa) : **frappe plus fluide**. La zone de message ne recalcule plus sa hauteur à chaque
+  touche (`field-sizing: content`, repli JS seulement si le texte déborde ou rétrécit). Le halo du point vert est animé
+  en `transform`/`opacity` (plus de `box-shadow` redessiné à chaque image) et se met en pause (`mj-typing`) quand une
+  zone de texte de l'écran de révision a le focus : dans Anki, une animation sans fin retarde un peu les touches.
+
 ## Travailler à deux sur ce dépôt
 - Avant de commencer : `git pull`. En finissant une partie : commit clair en français + `git push`.
 - Noter dans « En cours » ci-dessous ce sur quoi on travaille, pour ne pas faire la même chose.
@@ -101,6 +106,7 @@ v5 (Xyroob) : point « il/elle révise » et bulles de messages pendant les rév
 v6 (CapyLinkMa) : notifications à gauche, réglages, bulles cliquables + minuteur, À faire, historique des duels,
 résultats, défis rapides, non-lus.
 v7 (Xyroob) : messages écrits librement, point vert plus visible, minuteur du pomodoro réductible.
+v8 (CapyLinkMa) : frappe plus fluide (zone de message, point vert en pause pendant qu'on tape).
 
 ## Reste à faire (choisi)
 Tout ce qui a été choisi est fait. Idées non choisies : 4, 10, 18, 30, et 31-33 (pont vers les casinos).

@@ -4,6 +4,10 @@
  * (pycmd « mjlive:… »). Le minuteur du pomodoro avance seul, chaque seconde ; un clic le réduit à 🍅. */
 (function(){
   if(window.mjLive)return;
+  // writing an answer (any text box of the review screen): the dot's halo stops, so it never slows the typing
+  function typing(e){var t=e.target;return t&&(t.isContentEditable||t.tagName==='TEXTAREA'||t.tagName==='INPUT');}
+  document.addEventListener('focusin',function(e){if(typing(e))document.documentElement.classList.add('mj-typing');});
+  document.addEventListener('focusout',function(e){if(typing(e))document.documentElement.classList.remove('mj-typing');});
   var pomo=null,sound=true,lastPhase=null,timer=null;
   function esc(s){var e=document.createElement('span');e.textContent=s==null?'':String(s);return e.innerHTML;}
   function root(){

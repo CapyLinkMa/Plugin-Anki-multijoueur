@@ -1,4 +1,4 @@
 {
-    "version": 7,
-    "nouveautes": "Tu peux écrire librement à ton ami dans l'onglet Activité (Entrée pour envoyer) ; le point vert « il révise » est plus visible ; le minuteur du pomodoro pendant les révisions a une petite barre de progression et se réduit à 🍅 d'un clic."
+    "version": 8,
+    "nouveautes": "Écrire est plus fluide : la zone de message s'agrandit sans ralentir, et le point vert « il révise » s'arrête de clignoter pendant que tu tapes une réponse."
 }

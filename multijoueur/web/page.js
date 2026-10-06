@@ -409,9 +409,17 @@
     });
     const box = $('#chat-text'), form = $('#chat-form');
     if (box && form) {
-      const grow = () => { box.style.height = 'auto'; box.style.height = Math.min(box.scrollHeight, 120) + 'px'; };
-      grow();
-      box.oninput = () => { draft = box.value; grow(); };
+      // The box grows with the text. Recent Anki: the browser does it by itself (field-sizing in page.css).
+      // Older Anki: measure only when the text overflows or shrinks; resetting the height on every key
+      // made the whole tab (feed included) lay out twice per key, a small lag felt while typing.
+      const auto = window.CSS && CSS.supports && CSS.supports('field-sizing', 'content');
+      const grow = (shrink) => {
+        if (auto) return;
+        if (shrink) box.style.height = 'auto';
+        if (shrink || box.scrollHeight > box.clientHeight) box.style.height = Math.min(box.scrollHeight + 2, 120) + 'px';
+      };
+      grow(true);
+      box.oninput = (ev) => { draft = box.value; grow(!box.value || (ev.inputType || '').startsWith('delete')); };
       box.onkeydown = (ev) => { if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); form.requestSubmit(); } };
       form.onsubmit = async (ev) => {
         ev.preventDefault();
