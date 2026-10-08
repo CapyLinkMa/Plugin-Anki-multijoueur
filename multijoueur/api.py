@@ -34,7 +34,7 @@ SETTINGS = {                 # this computer's choices (Profil → Réglages), k
     "corner": "haut-gauche", # on the left: the casinos live on the right
     "pomo_pill": True,       # the pomodoro timer during reviews
     "sound": True,           # a short sound when the pomodoro changes phase
-    "race": True,            # the live race during reviews (% of one's day), when a friend studies at the same time
+    "race": True,            # the live race during reviews (% of the deck being done), when a friend studies at the same time
 }
 KEPT_ON_SIGN_IN = ("targets", "settings", "msg_seen", "feed_seen")
 AVATARS = ["🙂", "🦫", "🦊", "🐼", "🐸", "🦉", "🐙", "🦄", "🐯", "🐨", "🐧", "🦖", "🧠", "🫀", "🫁", "🧬", "🔬", "💊", "🩺", "📚"]
@@ -318,26 +318,20 @@ class MultiAPI:
         return True
 
     def my_progress(self):
-        """On the main thread: {"pct": % of my day, "cards": cards today}, for the live race."""
+        """On the main thread: {"pct", "left"} of the deck I'm studying now, for the live race."""
         col = self.col_getter()
         if col is None:
             return None
         try:
-            row = metrics.recent_days(col, 1)[0]
+            return metrics.deck_progress(col)
         except Exception:
             return None
-        goal = self._distinct_goal(row["day"])
-        if goal:
-            pct = 100 * (row.get("done") or 0) / goal
-        else:
-            pct = 100 * (row.get("cards") or 0) / int((self.cache.get("profile") or {}).get("daily_goal") or 100)
-        return {"pct": min(round(pct), round(100 * group.PCT_CAP)), "cards": row.get("cards") or 0}
 
     def set_studying(self):
         """Called while reviewing (throttled by the caller): 'en train d'étudier',
-        with my % of the day and my cards (the others' live race)."""
+        with how far I am in the deck I'm studying (the others' live race)."""
         mine = self.my_progress()
-        status = group.live_status(mine["pct"], mine["cards"]) if mine else "study"
+        status = group.live_status(mine["pct"], mine["left"]) if mine else "study"
         self.run_bg(lambda: self._quiet(lambda: self.server.set_status(status)), lambda _r: None)
 
     def set_idle(self):
@@ -403,8 +397,8 @@ class MultiAPI:
                 "pomo": {k: pomo[k] for k in ("id", "start", "work", "rest", "rounds")} if pomo else None}
 
     def live_race(self, members, now):
-        """The race during reviews, when a friend studies at the same time: each
-        one's % of their own day (fair between programs), cards for info.
+        """The race during reviews, when a friend studies at the same time: how far
+        each one is in the deck they're doing now (% done today, cards left).
         None when nobody else with a recent add-on is studying."""
         me = self.server.user_id
         others = []

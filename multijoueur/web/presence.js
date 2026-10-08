@@ -1,17 +1,17 @@
 /* Pendant les révisions : mjLive({corner, sound, live: [{pseudo, avatar}],
  *   messages: [{pseudo, avatar, text, verb, click}], pomo: {id, start, work, rest, rounds} | null,
- *   race: {me: {pct, cards, avatar}, others: [{pseudo, avatar, pct, cards}]} | null})
+ *   race: {me: {pct, left, avatar}, others: [{pseudo, avatar, pct, left}]} | null})
  * À gauche par défaut (les casinos sont à droite). Une bulle cliquable ouvre la fenêtre 👥
  * (pycmd « mjlive:… »). Le minuteur du pomodoro avance seul, chaque seconde : un anneau se referme
- * autour de 🍅 ; un clic le réduit à l'anneau seul. La course : une fine ligne, chacun à son % de
- * journée ; un mot discret seulement quand quelqu'un passe devant. */
+ * autour de 🍅 ; un clic le réduit à l'anneau seul. La course : une fine ligne, chacun à son % du
+ * paquet qu'il fait en ce moment ; un mot discret seulement quand quelqu'un passe devant ou finit son paquet. */
 (function(){
   if(window.mjLive)return;
   // writing an answer (any text box of the review screen): the dot's halo stops, so it never slows the typing
   function typing(e){var t=e.target;return t&&(t.isContentEditable||t.tagName==='TEXTAREA'||t.tagName==='INPUT');}
   document.addEventListener('focusin',function(e){if(typing(e))document.documentElement.classList.add('mj-typing');});
   document.addEventListener('focusout',function(e){if(typing(e))document.documentElement.classList.remove('mj-typing');});
-  var pomo=null,sound=true,lastPhase=null,timer=null,leader=null,finished=false,noteTimer=null;
+  var pomo=null,sound=true,lastPhase=null,timer=null,leader=null,finished={},noteTimer=null;
   var RING=81.68;   // 2·π·13: the circle around 🍅
   function esc(s){var e=document.createElement('span');e.textContent=s==null?'':String(s);return e.innerHTML;}
   function root(){
@@ -70,7 +70,7 @@
     box.querySelector('.mj-lab2').textContent=(f.ph==='work'?'travail':'pause')+' · '+f.r+'/'+pomo.rounds;
     if(changed)setTimeout(function(){box.classList.remove('mj-ping');},3600);
   }
-  // the live race: a thin line, each one at their % of the day (fair between programs)
+  // the live race: a thin line, each one at their % of the deck they're doing now
   function note(text){
     var n=root().querySelector('.mj-note');
     n.textContent=text;n.classList.add('on');
@@ -79,8 +79,9 @@
   function race(d){
     var el=root().querySelector('.mj-race');
     if(!d||!d.me||!d.others||!d.others.length){el.classList.remove('on');leader=null;return;}
-    var all=[{k:'me',pseudo:'Toi',avatar:d.me.avatar,pct:d.me.pct,cards:d.me.cards}].concat(d.others.map(function(o){
-      return{k:'o:'+o.pseudo,pseudo:o.pseudo,avatar:o.avatar,pct:o.pct,cards:o.cards};}));
+    var all=[{k:'me',pseudo:'Toi',avatar:d.me.avatar,pct:d.me.pct,left:d.me.left}].concat(d.others.map(function(o){
+      return{k:'o:'+o.pseudo,pseudo:o.pseudo,avatar:o.avatar,pct:o.pct,left:o.left};}));
+    function left(p){return p.left===0?'paquet fini':p.left+(p.left>1?' cartes restantes':' carte restante');}
     var track=el.querySelector('.mj-track');
     all.forEach(function(p){
       var dot=track.querySelector('[data-k="'+p.k.replace(/"/g,'')+'"]');
@@ -89,18 +90,22 @@
       dot.querySelector('.mj-av').textContent=p.avatar;
       dot.querySelector('.mj-pc').textContent=p.pct+' %';
       dot.style.left=Math.min(100,p.pct)+'%';
-      dot.title=p.pseudo+' : '+p.pct+' % de sa journée · '+p.cards+' cartes';
+      dot.title=p.pseudo+' : '+p.pct+' % '+(p.k==='me'?'de ton':'de son')+' paquet · '+left(p);
     });
     Array.prototype.slice.call(track.querySelectorAll('.mj-runner')).forEach(function(x){
       if(!all.some(function(p){return p.k.replace(/"/g,'')===x.getAttribute('data-k');}))track.removeChild(x);});
-    el.title=all.map(function(p){return p.pseudo+' '+p.pct+' % ('+p.cards+' cartes)';}).join(' · ')+' — % de sa propre journée';
+    el.title=all.map(function(p){return p.pseudo+' '+p.pct+' % ('+left(p)+')';}).join(' · ')+' — le paquet que chacun fait en ce moment';
     el.classList.add('on');
     var best=all.slice().sort(function(a,b){return b.pct-a.pct;})[0];
     var lead=best.pct===d.me.pct?'me':best.k;
     var first=leader===null;   // just arrived in the reviews: nothing to announce yet
     if(!first&&lead!==leader&&best.pct>0)note(lead==='me'?'👑 Tu passes devant !':'⚡ '+best.pseudo+' passe devant');
-    if(!first&&d.me.pct>=100&&!finished)note('🏁 Ta journée est finie !');
-    leader=lead;finished=d.me.pct>=100;
+    all.forEach(function(p){   // someone just finished their deck: one word, once
+      var over=p.left===0;
+      if(!first&&over&&!finished[p.k])note(p.k==='me'?'🏁 Paquet fini !':'🏁 '+p.pseudo+' a fini son paquet');
+      finished[p.k]=over;
+    });
+    leader=lead;
   }
   window.mjLive=function(d){
     var r=root(),live=d.live||[],p=r.querySelector('.mj-pill');

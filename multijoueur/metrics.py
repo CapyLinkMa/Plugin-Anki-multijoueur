@@ -10,7 +10,7 @@ and for today the overdue backlog.
 
 import datetime
 
-REAL_ANSWER = "ease between 1 and 4 and type < 4"   # manual reschedules write ease 0 / type >= 4
+REAL_ANSWER = "r.ease between 1 and 4 and r.type < 4"   # manual reschedules write ease 0 / type >= 4
 QUEUE_REV = 2
 
 
@@ -50,6 +50,23 @@ def due_left(col):
     return sum(due_parts(col))
 
 
+def deck_progress(col):
+    """The deck being studied now (with its subdecks): {"pct", "done", "left"}.
+    done = distinct cards finished in it today (reviews + new cards started),
+    left = what Anki still shows today in it (reviews + new, learning steps left
+    out, like everywhere). For the live race during reviews."""
+    dids = col.decks.deck_and_child_ids(col.decks.get_current_id())
+    marks = ",".join(str(int(x)) for x in dids)
+    start_ms = _day_start_ms(col, col.sched.today)
+    done = col.db.scalar(
+        f"select count(distinct r.cid) from revlog r join cards c on c.id = r.cid where r.id >= ? and {REAL_ANSWER}"
+        f" and (c.did in ({marks}) or c.odid in ({marks})) and (r.type = 1 or (r.type = 0 and r.lastIvl = 0))",
+        start_ms) or 0
+    new, _learn, rev = col.sched.counts()
+    left = new + rev
+    return {"pct": round(100 * done / (done + left)) if done + left else 100, "done": done, "left": left}
+
+
 def recent_days(col, num_days):
     """[{day, cards, minutes, new_cards, review_count, retention, done, rev_done, overdue}]
     for the last `num_days` Anki days, today included, oldest first."""
@@ -59,7 +76,7 @@ def recent_days(col, num_days):
     end_ms = col.sched.day_cutoff * 1000
     rows = {d: [] for d in range(first, today + 1)}
     for rid, cid, ease, ms, rtype, last_ivl in col.db.all(
-            f"select id, cid, ease, time, type, lastIvl from revlog where id >= ? and id < ? and {REAL_ANSWER}",
+            f"select id, cid, ease, time, type, lastIvl from revlog r where id >= ? and id < ? and {REAL_ANSWER}",
             start_ms, end_ms):
         d = first + int((rid - start_ms) // 86_400_000)
         if d in rows:

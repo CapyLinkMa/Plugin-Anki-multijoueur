@@ -224,19 +224,20 @@ def averages(rows, member, today, skip):
     }
 
 
-def live_status(pct, cards):
-    """The status sent while reviewing: "study:<% of one's day>:<cards today>"
-    (fits the 20 characters of profiles.status), for the live race."""
-    return f"study:{max(0, min(999, int(pct)))}:{max(0, min(99999, int(cards)))}"
+def live_status(pct, left):
+    """The status sent while reviewing: "study:<% of the deck done>:<cards left>:p"
+    (fits the 20 characters of profiles.status), for the live race. The final
+    "p" tells it apart from v10, which sent the % of the day there."""
+    return f"study:{max(0, min(100, int(pct)))}:{max(0, min(99999, int(left)))}:p"
 
 
 def live_progress(member):
-    """{"pct", "cards"} read from the status, or None (an older add-on sends only "study")."""
+    """{"pct", "left"} read from the status, or None (an older add-on)."""
     parts = str(member.get("status") or "").split(":")
-    if len(parts) != 3 or parts[0] != "study":
+    if len(parts) != 4 or parts[0] != "study" or parts[3] != "p":
         return None
     try:
-        return {"pct": int(parts[1]), "cards": int(parts[2])}
+        return {"pct": int(parts[1]), "left": int(parts[2])}
     except ValueError:
         return None
 

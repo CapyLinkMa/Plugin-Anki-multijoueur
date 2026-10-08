@@ -108,6 +108,12 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
   carte « Mise à jour du plugin » dans le profil, et lien « ⬆️ Mise à jour » dans la barre du haut d'Anki quand une
   mise à jour attend.
 
+- **v11** (2026-10-08, Xyroob) : la course en direct compare le **paquet en cours** (pas la journée) :
+  `metrics.deck_progress` = cartes distinctes finies aujourd'hui dans le paquet sélectionné (+ sous-paquets) ÷
+  (finies + restantes selon `col.sched.counts()`, apprentissage exclu). Statut `study:<pct>:<restantes>:p` (le « p »
+  le distingue du format v10). Un mot de 5 s quand quelqu'un passe devant ou finit son paquet. Le nom du paquet
+  n'est pas envoyé.
+
 ## Travailler à deux sur ce dépôt
 - Avant de commencer : `git pull`. En finissant une partie : commit clair en français + `git push`.
 - Noter dans « En cours » ci-dessous ce sur quoi on travaille, pour ne pas faire la même chose.
@@ -131,6 +137,7 @@ v7 (Xyroob) : messages écrits librement, point vert plus visible, minuteur du p
 v8 (CapyLinkMa) : frappe plus fluide (zone de message, point vert en pause pendant qu'on tape).
 v9 (Xyroob) : points plus équitables (journée sans les vieux retards, nouvelles à son rythme), fiche joueur dans Stats.
 v10 (Xyroob) : pomodoro en anneau, course en direct pendant les révisions, bouton de mise à jour dans la fenêtre.
+v11 (Xyroob) : course en direct sur le paquet qu'on fait (% et cartes restantes).
 
 ## Reste à faire (choisi)
 Tout ce qui a été choisi est fait. Idées non choisies : 4, 10, 18, 30, et 31-33 (pont vers les casinos).

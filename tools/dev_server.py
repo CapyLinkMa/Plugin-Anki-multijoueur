@@ -93,9 +93,9 @@ def presence_page(night=False):
             "messages": [{"pseudo": "Xyroob", "avatar": "🧬", "text": "Courage, tu peux le faire 💪", "verb": False, "click": "open"},
                          {"pseudo": "Xyroob", "avatar": "🧬", "text": "lance un pomodoro 🍅 (clique pour le rejoindre)",
                           "verb": True, "click": "pomo:1"}],
-            "race": {"me": {"pct": 52, "cards": 310, "avatar": "🦫"}, "others": [{"pseudo": "Xyroob", "avatar": "🧬", "pct": 61, "cards": 140}]}}
-    later = dict(data, messages=[], race={"me": {"pct": 66, "cards": 390, "avatar": "🦫"},
-                                          "others": [{"pseudo": "Xyroob", "avatar": "🧬", "pct": 63, "cards": 150}]})
+            "race": {"me": {"pct": 52, "left": 48, "avatar": "🦫"}, "others": [{"pseudo": "Xyroob", "avatar": "🧬", "pct": 61, "left": 19}]}}
+    later = dict(data, messages=[], race={"me": {"pct": 66, "left": 34, "avatar": "🦫"},
+                                          "others": [{"pseudo": "Xyroob", "avatar": "🧬", "pct": 63, "left": 18}]})
     return (f"<!doctype html><html><head><meta charset='utf-8'><style>{read('presence.css')}"
             "body{font:20px system-ui;text-align:center;padding-top:200px;background:#fafafa}"
             ".casino{position:fixed;top:10px;right:10px;width:220px;height:300px;background:#2a1a3a;color:#fff;"

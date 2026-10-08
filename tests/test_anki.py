@@ -53,6 +53,7 @@ class Metrics(unittest.TestCase):
         self.assertEqual(metrics.due_left(self.col), 7)   # 10 new cards, 3 started: 7 left
         self.assertEqual(metrics.due_parts(self.col), (0, 7))
         self.assertEqual(metrics.due_today(self.col), 0)
+        self.assertEqual(metrics.deck_progress(self.col), {"pct": 30, "done": 3, "left": 7})
 
     def test_due_today_leaves_the_backlog_out(self):
         cids = list(self.col.find_cards(""))

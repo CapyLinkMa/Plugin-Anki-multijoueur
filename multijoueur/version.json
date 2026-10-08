@@ -1,4 +1,4 @@
 {
-    "version": 10,
-    "nouveautes": "Pendant les révisions : un anneau se referme autour de la tomate du pomodoro, et une petite course en direct (vos % de journée) quand l'autre révise en même temps. Nouveau bouton ⬆️ en haut de la fenêtre pour les mises à jour."
+    "version": 11,
+    "nouveautes": "La course en direct se fait maintenant sur le paquet que chacun est en train de faire : où vous en êtes (%) et combien de cartes il vous reste."
 }
