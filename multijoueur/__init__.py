@@ -24,7 +24,7 @@ from .server import Server
 
 ADDON_DIR = os.path.dirname(__file__)
 USER_FILES = os.path.join(ADDON_DIR, "user_files")
-STATUS_EVERY = 120      # seconds between two "en train d'étudier" pings
+STATUS_EVERY = 60       # seconds between two "en train d'étudier" pings
 SYNC_AFTER_CARDS = 300  # seconds between two syncs while reviewing
 UPDATE_CHECK_DELAY = 8  # seconds after Anki opens: let it start in peace first
 LIVE_EVERY = 45         # seconds between two "who is studying? new messages?" checks
@@ -56,6 +56,8 @@ def get_api():
                         os.path.join(USER_FILES, "session.json"))
         _api = MultiAPI(server, lambda: mw.col, os.path.join(USER_FILES, "state.json"), run_bg=_run_bg)
         _api.on_install_update = install_update
+        _api.on_check_update = lambda: check_update(manual=True, from_window=True)
+        _api.version = updater.local_info(ADDON_DIR).get("version")
         _api.on_settings = _apply_settings
         if not cfg.get("indicateur_revisions", True):
             _api.defaults.update(presence=False, bubbles=False)
@@ -94,19 +96,29 @@ def _in_background(fn):
 
 
 @_safe
-def check_update(manual=False):
+def check_update(manual=False, from_window=False):
     """Asks GitHub for a newer version: offered once per version at start
-    (then only a banner in the window), every time when asked from the menu."""
+    (then only a banner in the window), every time when asked from the menu
+    or from the window's « Mise à jour » button (the answer then shows in the
+    window: the banner with « Installer », or « à jour »)."""
     repo = (_config().get("depot_github") or "").strip()
 
     def done(res):
+        api = get_api()
         if not res["ok"]:
-            if manual:
+            api.update_check = res["error"]
+            _refresh_window()
+            if manual and not from_window:
                 showWarning(res["error"], title="Multijoueur")
             return
-        api = get_api()
+        if bool(api.update) != bool(res["value"]):
+            api.update = res["value"]
+            _redraw_toolbar()
         api.update = info = res["value"]
+        api.update_check = None if info else ("latest" if manual else None)
         _refresh_window()
+        if from_window:
+            return
         if not info:
             if manual:
                 tooltip("👥 Multijoueur : tu as déjà la dernière version ✅")
@@ -136,6 +148,7 @@ def install_update():
         if res["ok"]:
             get_api().update = None
             _refresh_window()
+            _redraw_toolbar()
             showInfo("✅ Mise à jour du Multijoueur installée.\n\nFerme Anki et rouvre-le pour l'utiliser.",
                      title="Multijoueur")
         else:
@@ -215,6 +228,8 @@ def _apply_settings(settings):
             out["live"] = []
         if not settings["pomo_pill"]:
             out["pomo"] = None
+        if not settings["race"]:
+            out["race"] = None
         mw.reviewer.web.eval("window.mjLive&&mjLive(%s);" % json.dumps(out, ensure_ascii=False))
 
 
@@ -291,6 +306,16 @@ def _on_sync_finish():
 
 def _on_toolbar(links, toolbar):
     links.append(toolbar.create_link("anki-multijoueur", "👥", lambda: open_window(), tip="Multijoueur", id="anki-multijoueur"))
+    if _api is not None and _api.update:   # an update waits: a visible link next to 👥, until it's installed
+        links.append(toolbar.create_link("anki-multijoueur-maj", "⬆️ Mise à jour", install_update,
+                                         tip="Installer la mise à jour du Multijoueur", id="anki-multijoueur-maj"))
+
+
+def _redraw_toolbar():
+    try:
+        mw.toolbar.draw()
+    except Exception:
+        pass
 
 
 def _setup_menu():

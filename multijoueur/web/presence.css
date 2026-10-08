@@ -29,20 +29,8 @@
 #mj-live .mj-msg.on{opacity:1;transform:none;pointer-events:auto}
 #mj-live .mj-msg.mj-click{cursor:pointer}
 #mj-live .mj-msg.mj-click:hover{box-shadow:0 4px 18px rgba(0,0,0,.2),0 0 0 2px rgba(245,181,68,.7)}
-#mj-live .mj-pomo{display:none;position:relative;overflow:hidden;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
   background:rgba(255,255,255,.85);color:#1d1d1f;box-shadow:0 1px 6px rgba(0,0,0,.1);opacity:.7;pointer-events:auto;cursor:pointer}
-#mj-live .mj-pomo .mj-bar{position:absolute;left:0;bottom:0;height:2px;background:#e8553f;transition:width 1s linear}
-#mj-live .mj-pomo.rest .mj-bar{background:#2fb36d}
-#mj-live .mj-pomo.mj-mini{padding:3px 6px;gap:0}
-#mj-live .mj-pomo.mj-mini b,#mj-live .mj-pomo.mj-mini .mj-lab2{display:none}
-#mj-live .mj-pomo.mj-ping{animation:mjPing 1.2s ease-in-out 3}
-@keyframes mjPing{50%{opacity:1;transform:scale(1.08)}}
 #mj-live .mj-msg .mj-txt{white-space:pre-wrap;overflow-wrap:anywhere}
-#mj-live .mj-pomo:hover{opacity:1}
-#mj-live .mj-pomo.on{display:flex}
-#mj-live .mj-pomo b{font-variant-numeric:tabular-nums;font-size:13px}
-#mj-live .mj-pomo.rest{box-shadow:0 0 0 1.5px #2fb36d}
-#mj-live .mj-pomo .mj-lab2{font-size:11px;font-weight:500;opacity:.7}
 #mj-live .mj-msg.out{opacity:0;transition:opacity .5s}
 #mj-live .mj-msg .mj-av{font-size:17px}
 #mj-live .mj-msg b{font-weight:700}
@@ -51,3 +39,53 @@
 .nightMode #mj-live .mj-msg,.night-mode #mj-live .mj-msg,body.night_mode #mj-live .mj-msg{background:rgba(30,32,40,.96);color:#eceef3}
 .nightMode #mj-live,.night-mode #mj-live,body.night_mode #mj-live{--mj-ring:#1e2028}
 @media (prefers-reduced-motion:reduce){#mj-live .mj-dot,#mj-live .mj-pomo.mj-ping{animation:none}#mj-live .mj-msg{transition:opacity .3s}}
+
+/* the pomodoro: a ring closes around 🍅 as the phase goes by (red: work, green: pause) */
+#mj-live .mj-pomo{display:none;align-items:center;gap:7px;padding:3px 11px 3px 3px;border-radius:999px;
+  background:rgba(255,255,255,.85);color:#1d1d1f;box-shadow:0 1px 6px rgba(0,0,0,.1);opacity:.75;pointer-events:auto;cursor:pointer;
+  transition:opacity .3s,padding .3s}
+#mj-live .mj-pomo.on{display:flex}
+#mj-live .mj-pomo:hover{opacity:1}
+#mj-live .mj-ring{position:relative;display:inline-flex;width:28px;height:28px;flex-shrink:0}
+#mj-live .mj-ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+#mj-live .mj-ring circle{fill:none;stroke-width:3}
+#mj-live .mj-ring .mj-t{stroke:rgba(232,85,63,.18)}
+#mj-live .mj-ring .mj-arc{stroke:#e8553f;stroke-linecap:round;transition:stroke-dashoffset 1s linear,stroke .6s}
+#mj-live .mj-pomo.rest .mj-t{stroke:rgba(47,179,109,.2)}
+#mj-live .mj-pomo.rest .mj-arc{stroke:#2fb36d}
+#mj-live .mj-ico{margin:auto;font-size:14px;line-height:1}
+#mj-live .mj-pomo b{font-variant-numeric:tabular-nums;font-size:13px}
+#mj-live .mj-pomo .mj-lab2{font-size:11px;font-weight:500;opacity:.7}
+#mj-live .mj-pomo.mj-mini{padding:2px;gap:0;opacity:.7}
+#mj-live .mj-pomo.mj-mini b,#mj-live .mj-pomo.mj-mini .mj-lab2{display:none}
+#mj-live .mj-pomo.mj-mini .mj-ring{width:30px;height:30px}
+#mj-live .mj-pomo.mj-mini .mj-ico{font-size:15px}
+/* the last minute: the ring's end glows softly, nothing moves */
+#mj-live .mj-pomo.mj-last .mj-arc{filter:drop-shadow(0 0 2px rgba(232,85,63,.8))}
+#mj-live .mj-pomo.rest.mj-last .mj-arc{filter:drop-shadow(0 0 2px rgba(47,179,109,.8))}
+#mj-live .mj-pomo.mj-ping{animation:mjPing 1.2s ease-in-out 3}
+@keyframes mjPing{50%{opacity:1;transform:scale(1.08)}}
+
+/* the live race: one thin line, a small avatar per player at their % of the day; details on hover */
+#mj-live .mj-race{display:none;flex-direction:column;gap:3px;pointer-events:auto;opacity:.5;transition:opacity .4s}
+#mj-live .mj-race.on{display:flex}
+#mj-live .mj-race:hover{opacity:1}
+#mj-live .mj-track{position:relative;width:130px;height:24px;margin:0 10px}
+#mj-live .mj-track::before{content:"";position:absolute;left:0;right:0;top:11px;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,rgba(127,127,127,.35),rgba(127,127,127,.35) 99%,#22c55e 99%)}
+#mj-live .mj-runner{position:absolute;top:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;
+  transition:left 2.5s cubic-bezier(.3,.8,.3,1)}
+#mj-live .mj-runner .mj-av{font-size:13px;line-height:18px;width:18px;height:18px;text-align:center;border-radius:50%;
+  background:rgba(124,156,255,.9);box-shadow:0 0 0 1.5px var(--mj-ring,#fff)}
+#mj-live .mj-runner.mj-me{z-index:1;top:6px}   /* me a little lower: both stay visible when side by side */
+#mj-live .mj-runner.mj-me .mj-av{background:rgba(245,181,68,.95)}
+#mj-live .mj-runner .mj-pc{font-size:10px;font-weight:600;opacity:0;transition:opacity .3s;white-space:nowrap;
+  color:#1d1d1f;text-shadow:0 0 3px #fff}
+#mj-live .mj-race:hover .mj-pc{opacity:1}
+#mj-live .mj-race:hover .mj-track{margin-bottom:12px}
+#mj-live .mj-note{max-height:0;overflow:hidden;font-size:11px;font-weight:600;opacity:0;white-space:nowrap;
+  padding:0 8px;border-radius:999px;background:rgba(255,255,255,.9);color:#1d1d1f;transition:opacity .5s,max-height .5s}
+#mj-live .mj-note.on{opacity:1;max-height:20px;padding:2px 8px}
+.nightMode #mj-live .mj-note,.night-mode #mj-live .mj-note,body.night_mode #mj-live .mj-note{background:rgba(30,32,40,.9);color:#eceef3}
+.nightMode #mj-live .mj-pc,.night-mode #mj-live .mj-pc,body.night_mode #mj-live .mj-pc{color:#eceef3;text-shadow:0 0 3px #000}
+@media (prefers-reduced-motion:reduce){#mj-live .mj-pomo.mj-ping{animation:none}#mj-live .mj-runner{transition:none}}

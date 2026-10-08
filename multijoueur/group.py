@@ -224,9 +224,26 @@ def averages(rows, member, today, skip):
     }
 
 
+def live_status(pct, cards):
+    """The status sent while reviewing: "study:<% of one's day>:<cards today>"
+    (fits the 20 characters of profiles.status), for the live race."""
+    return f"study:{max(0, min(999, int(pct)))}:{max(0, min(99999, int(cards)))}"
+
+
+def live_progress(member):
+    """{"pct", "cards"} read from the status, or None (an older add-on sends only "study")."""
+    parts = str(member.get("status") or "").split(":")
+    if len(parts) != 3 or parts[0] != "study":
+        return None
+    try:
+        return {"pct": int(parts[1]), "cards": int(parts[2])}
+    except ValueError:
+        return None
+
+
 def is_live(member, now, minutes=LIVE_MINUTES):
     at = member.get("status_at")
-    if not at or member.get("status") != "study":
+    if not at or str(member.get("status") or "").split(":")[0] != "study":
         return False
     try:
         seen = datetime.datetime.fromisoformat(at.replace("Z", "+00:00"))

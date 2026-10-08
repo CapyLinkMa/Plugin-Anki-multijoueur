@@ -76,22 +76,35 @@ else:
     me.collect = lambda: []
 if "--update" in sys.argv:
     me.update = {"version": 99, "nouveautes": "Exemple de nouveautés."}
+me.version = 9
 
-def presence_page():
+
+def fake_check():   # the window's « Mise à jour » button: GitHub says "up to date"
+    me.update_check = None if me.update else "latest"
+
+
+me.on_check_update = fake_check
+
+def presence_page(night=False):
     read = M["page"]._read
     start = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=3)).isoformat()
     data = {"corner": me.settings()["corner"], "sound": False, "live": [{"pseudo": "Xyroob", "avatar": "🧬"}],
             "pomo": {"id": 1, "start": start, "work": 25, "rest": 5, "rounds": 4},
             "messages": [{"pseudo": "Xyroob", "avatar": "🧬", "text": "Courage, tu peux le faire 💪", "verb": False, "click": "open"},
                          {"pseudo": "Xyroob", "avatar": "🧬", "text": "lance un pomodoro 🍅 (clique pour le rejoindre)",
-                          "verb": True, "click": "pomo:1"}]}
+                          "verb": True, "click": "pomo:1"}],
+            "race": {"me": {"pct": 52, "cards": 310, "avatar": "🦫"}, "others": [{"pseudo": "Xyroob", "avatar": "🧬", "pct": 61, "cards": 140}]}}
+    later = dict(data, messages=[], race={"me": {"pct": 66, "cards": 390, "avatar": "🦫"},
+                                          "others": [{"pseudo": "Xyroob", "avatar": "🧬", "pct": 63, "cards": 150}]})
     return (f"<!doctype html><html><head><meta charset='utf-8'><style>{read('presence.css')}"
             "body{font:20px system-ui;text-align:center;padding-top:200px;background:#fafafa}"
             ".casino{position:fixed;top:10px;right:10px;width:220px;height:300px;background:#2a1a3a;color:#fff;"
-            "border-radius:12px;padding:10px;font-size:13px}</style>"
-            f"<script>{read('presence.js')}</script></head><body><div class='casino'>(ton casino, à droite)</div>"
+            "border-radius:12px;padding:10px;font-size:13px}"
+            + ("body{background:#2c2c2c;color:#eee}" if night else "") +
+            f"</style><script>{read('presence.js')}</script></head><body class='{'nightMode' if night else ''}'><div class='casino'>(ton casino, à droite)</div>"
             "<div>Recto de la carte : ...</div><script>window.pycmd=function(c){document.title=c;};"
-            f"setTimeout(function(){{mjLive({json.dumps(data, ensure_ascii=False)});}},300);</script></body></html>")
+            f"setTimeout(function(){{mjLive({json.dumps(data, ensure_ascii=False)});}},300);"
+            f"setTimeout(function(){{mjLive({json.dumps(later, ensure_ascii=False)});}},4000);</script></body></html>")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -100,7 +113,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.startswith("/revision"):   # the review screen with the little overlay
-            body = presence_page().encode("utf-8")
+            body = presence_page("nuit" in self.path).encode("utf-8")
         else:
             body = M["page"].build_page(me.snapshot()).encode("utf-8")
         self.send_response(200)

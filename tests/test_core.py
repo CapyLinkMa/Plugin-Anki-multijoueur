@@ -127,6 +127,37 @@ class TwoPlayers(unittest.TestCase):
                "created_at": "2020-01-01T00:00:00+00:00"}     # Anki was closed for ages: not shown
         self.assertEqual(med.live_view(med.cache["members"], [old], 1)["messages"], [])
 
+    def test_live_race_when_both_study(self):
+        """La course en direct : chacun à son % de journée, seulement si l'autre révise en même temps."""
+        med, bio = self.player("med", []), self.player("bio", [])
+        med.call("save_profile", {"pseudo": "Slava", "avatar": "🦫", "daily_goal": 300})
+        bio.call("save_profile", {"pseudo": "Ami", "avatar": "🧬", "daily_goal": 60})
+        bio.call("join_group", {"code": med.call("create_group", {"name": "Duo"})["code"]})
+        med.sync(), bio.sync()
+        med.my_progress = lambda: {"pct": 52, "cards": 310}
+        bio.my_progress = lambda: {"pct": 61, "cards": 140}
+        seen = []
+        med.live_check(seen.append)
+        self.assertIsNone(seen[-1]["race"])               # nobody else studying
+        bio.set_studying()
+        med.live_check(seen.append)
+        self.assertEqual(seen[-1]["live"], [{"pseudo": "Ami", "avatar": "🧬"}])
+        self.assertEqual(seen[-1]["race"], {"me": {"pct": 52, "cards": 310, "avatar": "🦫"},
+                                            "others": [{"pct": 61, "cards": 140, "pseudo": "Ami", "avatar": "🧬"}]})
+        med.call("save_settings", {"race": False})
+        med.live_check(seen.append)
+        self.assertIsNone(seen[-1]["race"])
+        self.assertEqual(len(seen[-1]["live"]), 1)        # the dot stays
+
+    def test_live_status_keeps_older_add_ons_working(self):
+        now = datetime.datetime(2026, 10, 1, 12, 0, tzinfo=datetime.timezone.utc)
+        status = group.live_status(1234, 10 ** 6)
+        self.assertLessEqual(len(status), 20)             # profiles.status: 20 characters at most
+        self.assertEqual(group.live_progress({"status": "study:64:312"}), {"pct": 64, "cards": 312})
+        self.assertIsNone(group.live_progress({"status": "study"}))   # an older add-on
+        self.assertIsNone(group.live_progress({"status": "idle"}))
+        self.assertTrue(group.is_live({"status": "study:64:312", "status_at": "2026-10-01T11:58:00+00:00"}, now))
+
     def test_pomodoro_reaches_me_during_reviews(self):
         """Le pomodoro lancé par l'autre : bulle « rejoindre » puis minuteur, sans attendre la synchro complète."""
         med, bio = self.player("med", []), self.player("bio", [])

@@ -34,6 +34,7 @@ SETTINGS = {                 # this computer's choices (Profil → Réglages), k
     "corner": "haut-gauche", # on the left: the casinos live on the right
     "pomo_pill": True,       # the pomodoro timer during reviews
     "sound": True,           # a short sound when the pomodoro changes phase
+    "race": True,            # the live race during reviews (% of one's day), when a friend studies at the same time
 }
 KEPT_ON_SIGN_IN = ("targets", "settings", "msg_seen", "feed_seen")
 AVATARS = ["🙂", "🦫", "🦊", "🐼", "🐸", "🦉", "🐙", "🦄", "🐯", "🐨", "🐧", "🦖", "🧠", "🫀", "🫁", "🧬", "🔬", "💊", "🩺", "📚"]
@@ -57,6 +58,9 @@ class MultiAPI:
         self._memo = (None, None)
         self.update = None              # {"version", "nouveautes"} when GitHub has a newer version
         self.on_install_update = None   # set by __init__.py (needs Qt)
+        self.on_check_update = None     # set by __init__.py: asks GitHub, then sets update_check and refreshes
+        self.update_check = None        # what the window shows: "checking", "latest" or an error message
+        self.version = None             # this add-on's version number (version.json), set by __init__.py
         self.on_settings = None         # set by __init__.py: re-dress the review screen at once
         self.open_tab = None            # the tab the window opens on (a click on a bubble)
 
@@ -313,9 +317,28 @@ class MultiAPI:
         self.run_bg(task, done)
         return True
 
+    def my_progress(self):
+        """On the main thread: {"pct": % of my day, "cards": cards today}, for the live race."""
+        col = self.col_getter()
+        if col is None:
+            return None
+        try:
+            row = metrics.recent_days(col, 1)[0]
+        except Exception:
+            return None
+        goal = self._distinct_goal(row["day"])
+        if goal:
+            pct = 100 * (row.get("done") or 0) / goal
+        else:
+            pct = 100 * (row.get("cards") or 0) / int((self.cache.get("profile") or {}).get("daily_goal") or 100)
+        return {"pct": min(round(pct), round(100 * group.PCT_CAP)), "cards": row.get("cards") or 0}
+
     def set_studying(self):
-        """Called while reviewing (throttled by the caller): 'en train d'étudier'."""
-        self.run_bg(lambda: self._quiet(lambda: self.server.set_status("study")), lambda _r: None)
+        """Called while reviewing (throttled by the caller): 'en train d'étudier',
+        with my % of the day and my cards (the others' live race)."""
+        mine = self.my_progress()
+        status = group.live_status(mine["pct"], mine["cards"]) if mine else "study"
+        self.run_bg(lambda: self._quiet(lambda: self.server.set_status(status)), lambda _r: None)
 
     def set_idle(self):
         """Called when leaving the reviews: the others' dot goes away right away."""
@@ -376,8 +399,24 @@ class MultiAPI:
         st = self.settings()
         pomo = self.my_pomodoro() if st["pomo_pill"] else None
         return {"live": live if st["presence"] else [], "messages": shown if st["bubbles"] else [],
-                "corner": st["corner"], "sound": st["sound"],
+                "corner": st["corner"], "sound": st["sound"], "race": self.live_race(members, now) if st["race"] else None,
                 "pomo": {k: pomo[k] for k in ("id", "start", "work", "rest", "rounds")} if pomo else None}
+
+    def live_race(self, members, now):
+        """The race during reviews, when a friend studies at the same time: each
+        one's % of their own day (fair between programs), cards for info.
+        None when nobody else with a recent add-on is studying."""
+        me = self.server.user_id
+        others = []
+        for m in members:
+            prog = group.live_progress(m)
+            if m["id"] != me and prog and group.is_live(m, now, LIVE_DOT_MINUTES):
+                others.append(dict(prog, pseudo=m["pseudo"], avatar=m.get("avatar") or "🙂"))
+        mine = self.my_progress() if others else None
+        if not mine:
+            return None
+        avatar = (self.cache.get("profile") or {}).get("avatar") or "🙂"
+        return {"me": dict(mine, avatar=avatar), "others": others}
 
     @staticmethod
     def _notice(e, payload, me):
@@ -455,7 +494,7 @@ class MultiAPI:
                 "account": {"username": self.server.username, "secured": bool(self.server.username)},
                 "error": self.error, "syncing": self.syncing, "last_sync": self.store.get("last_sync"),
                 "avatars": AVATARS, "emojis": list(REACTIONS.values()), "ready": bool(self.store.get("last_sync")),
-                "update": self.update, "game": game,
+                "update": self.update, "update_check": self.update_check, "version": self.version, "game": game,
                 "messages": [{"code": k, "text": t} for k, t in games.MESSAGES],
                 "messages_left": max(0, games.MESSAGES_PER_DAY - self._sent_today("msg")),
                 "message_max": games.MESSAGE_MAX,
@@ -571,6 +610,14 @@ class MultiAPI:
         for key in self.cache:
             self.cache[key] = None if key in ("profile", "group") else []
         self.sync()
+        return {}
+
+    def do_check_update(self):
+        """The « Chercher une mise à jour » button of the window."""
+        if not self.on_check_update:
+            return {"ok": False, "error": "Impossible de chercher une mise à jour ici."}
+        self.update_check = "checking"
+        self.on_check_update()
         return {}
 
     def do_install_update(self):

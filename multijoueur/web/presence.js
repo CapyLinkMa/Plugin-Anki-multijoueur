@@ -1,19 +1,26 @@
 /* Pendant les révisions : mjLive({corner, sound, live: [{pseudo, avatar}],
- *   messages: [{pseudo, avatar, text, verb, click}], pomo: {id, start, work, rest, rounds} | null})
+ *   messages: [{pseudo, avatar, text, verb, click}], pomo: {id, start, work, rest, rounds} | null,
+ *   race: {me: {pct, cards, avatar}, others: [{pseudo, avatar, pct, cards}]} | null})
  * À gauche par défaut (les casinos sont à droite). Une bulle cliquable ouvre la fenêtre 👥
- * (pycmd « mjlive:… »). Le minuteur du pomodoro avance seul, chaque seconde ; un clic le réduit à 🍅. */
+ * (pycmd « mjlive:… »). Le minuteur du pomodoro avance seul, chaque seconde : un anneau se referme
+ * autour de 🍅 ; un clic le réduit à l'anneau seul. La course : une fine ligne, chacun à son % de
+ * journée ; un mot discret seulement quand quelqu'un passe devant. */
 (function(){
   if(window.mjLive)return;
   // writing an answer (any text box of the review screen): the dot's halo stops, so it never slows the typing
   function typing(e){var t=e.target;return t&&(t.isContentEditable||t.tagName==='TEXTAREA'||t.tagName==='INPUT');}
   document.addEventListener('focusin',function(e){if(typing(e))document.documentElement.classList.add('mj-typing');});
   document.addEventListener('focusout',function(e){if(typing(e))document.documentElement.classList.remove('mj-typing');});
-  var pomo=null,sound=true,lastPhase=null,timer=null;
+  var pomo=null,sound=true,lastPhase=null,timer=null,leader=null,finished=false,noteTimer=null;
+  var RING=81.68;   // 2·π·13: the circle around 🍅
   function esc(s){var e=document.createElement('span');e.textContent=s==null?'':String(s);return e.innerHTML;}
   function root(){
     var r=document.getElementById('mj-live');
     if(!r){r=document.createElement('div');r.id='mj-live';r.className='mj-haut-gauche';
-      r.innerHTML='<div class="mj-pill"></div><div class="mj-pomo"></div><div class="mj-msgs"></div>';document.body.appendChild(r);
+      r.innerHTML='<div class="mj-pill"></div><div class="mj-race"><div class="mj-track"></div><div class="mj-note"></div></div>'+
+        '<div class="mj-pomo"><span class="mj-ring"><svg viewBox="0 0 32 32" aria-hidden="true"><circle class="mj-t" cx="16" cy="16" r="13"/>'+
+        '<circle class="mj-arc" cx="16" cy="16" r="13" stroke-dasharray="'+RING+'" stroke-dashoffset="'+RING+'"/></svg><span class="mj-ico">🍅</span></span>'+
+        '<b class="mj-time"></b><span class="mj-lab2"></span></div><div class="mj-msgs"></div>';document.body.appendChild(r);
       r.querySelector('.mj-pomo').onclick=function(){mini(!mini());tick();};}
     return r;
   }
@@ -49,13 +56,51 @@
     var key=f.ph+f.r;
     var changed=lastPhase&&key!==lastPhase;
     if(changed)beep();
+    var arc=box.querySelector('.mj-arc'),small=mini();
+    // a new phase: the ring starts again from empty at once (no backwards animation)
+    if(key!==lastPhase){arc.style.transition='none';arc.getBoundingClientRect();}
+    else arc.style.transition='';
     lastPhase=key;
-    var m=Math.floor(f.left/60),s=Math.floor(f.left%60),small=mini();
-    box.className='mj-pomo on '+f.ph+(small?' mj-mini':'')+(changed||box.classList.contains('mj-ping')?' mj-ping':'');
-    box.title=(f.ph==='work'?'Travail':'Pause')+' · '+m+' min restantes · clique pour '+(small?'agrandir':'réduire');
-    box.innerHTML='<span>'+(f.ph==='work'?'🍅':'☕')+'</span><b>'+m+':'+(s<10?'0':'')+s+'</b><span class="mj-lab2">'+
-      (f.ph==='work'?'travail':'pause')+' · '+f.r+'/'+pomo.rounds+'</span><i class="mj-bar" style="width:'+Math.round(100*(1-f.left/f.len))+'%"></i>';
+    var m=Math.floor(f.left/60),s=Math.floor(f.left%60),done=Math.max(0,Math.min(1,1-f.left/f.len));
+    arc.setAttribute('stroke-dashoffset',(RING*(1-done)).toFixed(2));
+    box.className='mj-pomo on '+f.ph+(small?' mj-mini':'')+(changed||box.classList.contains('mj-ping')?' mj-ping':'')+(f.left<=60?' mj-last':'');
+    box.title=(f.ph==='work'?'Travail':'Pause')+' · '+(m?m+' min ':'')+s+' s restantes · tour '+f.r+'/'+pomo.rounds+' · clique pour '+(small?'agrandir':'réduire');
+    box.querySelector('.mj-ico').textContent=f.ph==='work'?'🍅':'☕';
+    box.querySelector('.mj-time').textContent=m+':'+(s<10?'0':'')+s;
+    box.querySelector('.mj-lab2').textContent=(f.ph==='work'?'travail':'pause')+' · '+f.r+'/'+pomo.rounds;
     if(changed)setTimeout(function(){box.classList.remove('mj-ping');},3600);
+  }
+  // the live race: a thin line, each one at their % of the day (fair between programs)
+  function note(text){
+    var n=root().querySelector('.mj-note');
+    n.textContent=text;n.classList.add('on');
+    clearTimeout(noteTimer);noteTimer=setTimeout(function(){n.classList.remove('on');},5000);
+  }
+  function race(d){
+    var el=root().querySelector('.mj-race');
+    if(!d||!d.me||!d.others||!d.others.length){el.classList.remove('on');leader=null;return;}
+    var all=[{k:'me',pseudo:'Toi',avatar:d.me.avatar,pct:d.me.pct,cards:d.me.cards}].concat(d.others.map(function(o){
+      return{k:'o:'+o.pseudo,pseudo:o.pseudo,avatar:o.avatar,pct:o.pct,cards:o.cards};}));
+    var track=el.querySelector('.mj-track');
+    all.forEach(function(p){
+      var dot=track.querySelector('[data-k="'+p.k.replace(/"/g,'')+'"]');
+      if(!dot){dot=document.createElement('span');dot.className='mj-runner'+(p.k==='me'?' mj-me':'');dot.setAttribute('data-k',p.k.replace(/"/g,''));
+        dot.innerHTML='<span class="mj-av"></span><span class="mj-pc"></span>';track.appendChild(dot);}
+      dot.querySelector('.mj-av').textContent=p.avatar;
+      dot.querySelector('.mj-pc').textContent=p.pct+' %';
+      dot.style.left=Math.min(100,p.pct)+'%';
+      dot.title=p.pseudo+' : '+p.pct+' % de sa journée · '+p.cards+' cartes';
+    });
+    Array.prototype.slice.call(track.querySelectorAll('.mj-runner')).forEach(function(x){
+      if(!all.some(function(p){return p.k.replace(/"/g,'')===x.getAttribute('data-k');}))track.removeChild(x);});
+    el.title=all.map(function(p){return p.pseudo+' '+p.pct+' % ('+p.cards+' cartes)';}).join(' · ')+' — % de sa propre journée';
+    el.classList.add('on');
+    var best=all.slice().sort(function(a,b){return b.pct-a.pct;})[0];
+    var lead=best.pct===d.me.pct?'me':best.k;
+    var first=leader===null;   // just arrived in the reviews: nothing to announce yet
+    if(!first&&lead!==leader&&best.pct>0)note(lead==='me'?'👑 Tu passes devant !':'⚡ '+best.pseudo+' passe devant');
+    if(!first&&d.me.pct>=100&&!finished)note('🏁 Ta journée est finie !');
+    leader=lead;finished=d.me.pct>=100;
   }
   window.mjLive=function(d){
     var r=root(),live=d.live||[],p=r.querySelector('.mj-pill');
@@ -68,6 +113,7 @@
     } else p.classList.remove('on');
     if(d.pomo===null||d.pomo===undefined){pomo=null;}
     else if(!pomo||pomo.id!==d.pomo.id){pomo=d.pomo;lastPhase=null;}
+    race(d.race);
     if(!timer)timer=setInterval(tick,1000);
     tick();
     (d.messages||[]).forEach(function(m,i){setTimeout(function(){bubble(m);},i*900);});

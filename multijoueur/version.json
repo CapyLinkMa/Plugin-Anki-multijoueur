@@ -1,4 +1,4 @@
 {
-    "version": 9,
-    "nouveautes": "Points plus justes : ta journée = les cartes dues aujourd'hui + tes nouvelles cartes à ton rythme (les vieux retards ne comptent plus contre toi), et une fiche joueur dans Stats pour voir en détail les 14 derniers jours de l'autre."
+    "version": 10,
+    "nouveautes": "Pendant les révisions : un anneau se referme autour de la tomate du pomodoro, et une petite course en direct (vos % de journée) quand l'autre révise en même temps. Nouveau bouton ⬆️ en haut de la fenêtre pour les mises à jour."
 }

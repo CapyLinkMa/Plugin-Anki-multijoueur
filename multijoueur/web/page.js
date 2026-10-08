@@ -75,6 +75,7 @@
     if (s < 86400) return `il y a ${Math.round(s / 3600)} h`;
     return `il y a ${Math.round(s / 86400)} j`;
   }
+  const ICON_UPDATE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>';
   const ICON_SYNC = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>';
 
   // one color per player: me = amber, the others in a fixed order
@@ -130,7 +131,26 @@
       S.syncing ? 'synchronisation…' : (S.last_sync ? `à jour ${ago(S.last_sync)}` : '')].filter(Boolean).join(' · ');
     const me = S.profile && S.group ? `<button class="me-btn ${tab === 'profil' ? 'on' : ''}" id="go-profile" aria-label="Mon profil" title="Mon profil">${esc(S.profile.avatar || '🙂')}</button>` : '';
     return `<div class="top"><div class="grow"><h1>Multijoueur</h1><div class="sub">${sub}</div></div>
+      <button class="icon-btn upd-btn ${S.update ? 'has' : ''} ${S.update_check === 'checking' ? 'busy' : ''}" id="check-update" aria-label="Mise à jour" title="${S.update ? 'Installer la mise à jour' : 'Chercher une mise à jour'}">${ICON_UPDATE}</button>
       <button class="icon-btn ${S.syncing ? 'spin' : ''}" id="refresh" aria-label="Synchroniser" title="Synchroniser">${ICON_SYNC}</button>${me}</div>`;
+  }
+
+  // « Mise à jour » : the arrow in the header and a card in the profile, so nobody has to find Anki's Outils menu
+  let lastCheck = null;
+  function updateNews() {
+    if (S.update_check === lastCheck) return;
+    lastCheck = S.update_check;
+    if (S.update_check === 'latest') toast('✅ Tu as déjà la dernière version');
+    else if (S.update_check && S.update_check !== 'checking') toast('⚠️ ' + S.update_check);
+  }
+  function updateCard() {
+    const state = S.update ? `<b>Version ${esc(S.update.version)} disponible</b>${S.update.nouveautes ? `<div class="tiny muted">${esc(S.update.nouveautes)}</div>` : ''}`
+      : S.update_check === 'checking' ? 'Recherche en cours…' : S.update_check === 'latest' ? 'Tu as la dernière version ✅' : '';
+    return `<div class="card"><h2>Mise à jour du plugin <span class="right">${S.version ? `version ${esc(S.version)}` : ''}</span></h2>
+      ${state ? `<div class="small">${state}</div>` : ''}
+      <div>${S.update ? '<button class="btn primary" data-update="install">Installer la mise à jour</button>'
+        : `<button class="btn" data-update="check" ${S.update_check === 'checking' ? 'disabled' : ''}>Chercher une mise à jour</button>`}</div>
+      <div class="tiny muted">Aussi : la flèche ⬆️ en haut de cette fenêtre. Après l'installation, ferme Anki et rouvre-le.</div></div>`;
   }
 
   function updateBanner() {
@@ -145,6 +165,11 @@
     if (r) r.onclick = () => api('refresh');
     const u = $('#install-update');
     if (u) u.onclick = async () => { u.disabled = true; u.textContent = 'Téléchargement…'; await api('install_update'); };
+    const updateAction = (b) => async () => { b.disabled = true; if (S.update) { toast('⬇️ Téléchargement de la mise à jour…'); await api('install_update'); } else await api('check_update'); };
+    const cu = $('#check-update');
+    if (cu) cu.onclick = updateAction(cu);
+    document.querySelectorAll('[data-update]').forEach((b) => { b.onclick = updateAction(b); });
+    updateNews();
     const pr = $('#go-profile');
     if (pr) pr.onclick = () => { tab = tab === 'profil' ? 'accueil' : 'profil'; render(); };
   }
@@ -579,7 +604,7 @@
 
   // -- profile (avatar button)
   function screenProfile() {
-    return levelCard() + settingsCard() + profileForm(false) + `<div class="card"><h2>Mon groupe</h2>
+    return levelCard() + settingsCard() + updateCard() + profileForm(false) + `<div class="card"><h2>Mon groupe</h2>
       <div>« ${esc(S.group.name)} » · code à donner à tes amis : <span class="code">${esc(S.group.code)}</span></div>
       <div><button class="btn small" id="g-leave">Quitter le groupe</button></div></div>` + accountCard();
   }
@@ -594,6 +619,7 @@
       ${sw('presence', 'Point « il révise »', 'un petit point quand un ami révise en même temps que toi')}
       ${sw('bubbles', 'Bulles', 'messages, encouragements, nouveaux défis, paris et pomodoros (clique dessus pour ouvrir)')}
       ${sw('pomo_pill', 'Minuteur du pomodoro', 'le temps restant quand tu es dans un pomodoro')}
+      ${sw('race', 'Course en direct', "quand un ami révise en même temps : vos % de journée côte à côte, en tout petit (survole pour les détails)")}
       ${sw('sound', 'Son du pomodoro', 'un petit bip quand vient la pause ou la reprise')}
       <div class="row"><label for="set-corner">Coin de l'écran</label><select id="set-corner">${(S.corners || []).map((c) => `<option value="${c}" ${st.corner === c ? 'selected' : ''}>${CORNER_NAME[c] || c}</option>`).join('')}</select></div>
       <div class="tiny muted">À gauche par défaut, pour ne pas cacher ton casino.</div></div>`;
