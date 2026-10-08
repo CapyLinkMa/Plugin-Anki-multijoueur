@@ -78,6 +78,7 @@ const SND = {
 };
 
 /* ------------------------------------------------------------------ réseau */
+function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch (e) { /* page encadrée */ } }
 function code4() { const L = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; let s = ''; for (let i = 0; i < 4; i++) s += L[Math.floor(Math.random() * L.length)]; return s; }
 
 function startNet(room) {
@@ -92,6 +93,7 @@ function onNet(ev, d) {
   if (ev === 'i') onInfo(d);
   else if (ev === 's') onSnap(d);
   else if (ev === 'x') onFx(d);
+  else if (ev === 'e' && d && Array.isArray(d.E)) for (const e of d.E) S.evq.push(e);
 }
 function sendHost(t, d) {
   const msg = Object.assign({ t }, d || {});
@@ -211,7 +213,7 @@ function createRoom(solo) {
   S.match = Sim.newMatch();
   Sim.addPlayer(S.match, { id: S.id, name: S.name, champ: S.champ });
   if (solo) { Sim.addBot(S.match); Sim.addBot(S.match); S.room = 'SOLO'; }
-  else { startNet(code4()); history.replaceState(null, '', '#' + S.room); }
+  else { startNet(code4()); setHash(S.room); }
   S.delay = 0.045;
   hostStart();
   pushInfo(true);
@@ -223,7 +225,7 @@ function joinRoom() {
   S.host = false; S.delay = 0.13; S.joining = true;
   $('#homeMsg').textContent = 'Connexion…';
   startNet(code);
-  history.replaceState(null, '', '#' + code);
+  setHash(code);
   let tries = 0;
   S.joinTimer = setInterval(() => {
     if (!S.joining) return clearInterval(S.joinTimer);
@@ -243,7 +245,7 @@ function leave() {
   const net = S.net;
   setTimeout(() => net && net.close(), 300);
   Object.assign(S, { net: null, match: null, info: null, host: false, solo: false, joining: false, room: null, snaps: [], evq: [], phase: '', round: 0, offset: null });
-  history.replaceState(null, '', location.pathname + location.search);
+  setHash('');
   $('#homeMsg').textContent = '';
   show('home');
 }
@@ -871,9 +873,10 @@ $('#codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') joinRo
 $('#btnLeave').onclick = leave;
 $('#btnHome').onclick = leave;
 $('#btnCopy').onclick = () => {
-  const url = location.protocol === 'file:' ? null : location.origin + location.pathname + '#' + S.room;
-  const text = url || ('Code de la salle : ' + S.room);
-  (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => toast(url ? 'Lien copié : envoie-le à tes amis !' : 'Code copié.'), () => toast(text));
+  const web = /^https?:$/.test(location.protocol) && !(S.net && S.net.mode === 'room');
+  const url = web ? location.origin + location.pathname + '#' + S.room : null;
+  const text = url || ('Rejoins-moi dans Arène ! Code de la salle : ' + S.room);
+  (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => toast(url ? 'Lien copié : envoie-le à tes amis !' : 'Code copié : envoie-le à tes amis !'), () => toast(text));
 };
 $('#champGrid').addEventListener('click', e => { const c = e.target.closest('.champ'); if (c) setChamp(c.dataset.c); });
 $('#shopChamps').addEventListener('click', e => { const c = e.target.closest('[data-c]'); if (c) setChamp(c.dataset.c); });

@@ -119,7 +119,10 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
   monnaie fictive remise à zéro à chaque partie : casino (machine à sous, roulette) et boîtes surprises entre les manches,
   « tapis » et « quitte ou double » pendant les manches. L'ordinateur de l'hôte fait tourner la partie (`jeu/sim.js`) ;
   tout passe par Supabase Realtime (canal `arene-<CODE>`, messages diffusés, **rien dans la base, schéma inchangé**).
-  `?local` dans l'adresse = test entre onglets sans Internet.
+  `?local` dans l'adresse = test entre onglets sans Internet. **Sans GitHub Pages** : `python3 jeu/construire.py` fabrique
+  `jeu/dist/arene.html` (un seul fichier à s'envoyer, s'ouvre d'un double-clic, passe par Supabase) et
+  `jeu/dist/arene-artifact.html`, publié sur claude.ai (https://claude.ai/artifact/VVKZ5fWE4GBjGfsTziKNqV), qui passe
+  par le « room » de claude.ai (amis invités en Contributeur au moins). À refaire après chaque changement du jeu.
 
 ## Travailler à deux sur ce dépôt
 - Avant de commencer : `git pull`. En finissant une partie : commit clair en français + `git push`.
