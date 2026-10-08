@@ -114,6 +114,13 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
   le distingue du format v10). Un mot de 5 s quand quelqu'un passe devant ou finit son paquet. Le nom du paquet
   n'est pas envoyé.
 
+- **Jeu « Arène »** (2026-10-08, Xyroob) : page web à part dans `jeu/`, **sans lien avec le plugin ni avec l'étude**
+  (aucun besoin de changer `version.json`). Combat en arène façon LoL, 2 à 4 joueurs (bots pour compléter),
+  monnaie fictive remise à zéro à chaque partie : casino (machine à sous, roulette) et boîtes surprises entre les manches,
+  « tapis » et « quitte ou double » pendant les manches. L'ordinateur de l'hôte fait tourner la partie (`jeu/sim.js`) ;
+  tout passe par Supabase Realtime (canal `arene-<CODE>`, messages diffusés, **rien dans la base, schéma inchangé**).
+  `?local` dans l'adresse = test entre onglets sans Internet.
+
 ## Travailler à deux sur ce dépôt
 - Avant de commencer : `git pull`. En finissant une partie : commit clair en français + `git push`.
 - Noter dans « En cours » ci-dessous ce sur quoi on travaille, pour ne pas faire la même chose.

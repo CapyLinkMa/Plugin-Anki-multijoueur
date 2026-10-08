@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arène</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+
+<!-- Accueil -->
+<section id="home" class="screen">
+  <div class="home-card">
+    <h1 class="logo">ARÈNE</h1>
+    <p class="tag">Combats rapides de 2 à 4 joueurs · casino et boîtes surprises entre les manches</p>
+    <label class="field">Ton pseudo<input id="nameInput" maxlength="16" placeholder="Ton pseudo" autocomplete="off"></label>
+    <button id="btnCreate" class="btn big">Créer une salle</button>
+    <div class="join-row">
+      <input id="codeInput" maxlength="4" placeholder="CODE" autocomplete="off">
+      <button id="btnJoin" class="btn">Rejoindre</button>
+    </div>
+    <button id="btnSolo" class="btn ghost">S'entraîner contre des bots</button>
+    <p id="homeMsg" class="msg"></p>
+    <details class="help">
+      <summary>Comment on joue ?</summary>
+      <ul>
+        <li><b>Clic droit</b> : se déplacer (ou les <b>flèches</b> du clavier).</li>
+        <li><b>Clic gauche</b> ou <b>espace</b> : attaque de base vers la souris.</li>
+        <li><b>Q W E R</b> : les sorts de ton champion, vers la souris. R = ultime.</li>
+        <li>Le cercle violet rétrécit : reste dedans. Dernier debout = manche gagnée.</li>
+        <li><b>💰 Quitte ou double</b> : une pièce géante apparaît en cours de manche. Reste dessus pour la prendre : si tu gagnes, tes gains doublent ; si on te tue, on te vole la moitié de tes pièces.</li>
+        <li><b>T = TAPIS</b> (15 premières secondes) : tu mises toutes tes pièces sur ta victoire.</li>
+        <li>Entre les manches : machine à sous, roulette et boîtes surprises (bonus ou malus pour la manche suivante).</li>
+        <li>Le plus riche à la fin gagne la partie. Pièces fictives, on repart à zéro chaque partie.</li>
+      </ul>
+    </details>
+  </div>
+</section>
+
+<!-- Salle d'attente -->
+<section id="lobby" class="screen hidden">
+  <div class="lobby-wrap">
+    <div class="lobby-head">
+      <div>
+        <div class="muted">Code de la salle</div>
+        <div id="roomCode" class="room-code">----</div>
+      </div>
+      <button id="btnCopy" class="btn ghost">Copier le lien d'invitation</button>
+      <button id="btnLeave" class="btn ghost">Quitter</button>
+    </div>
+    <div class="lobby-grid">
+      <div class="panel">
+        <h3>Joueurs <span id="lobbyCount" class="muted"></span></h3>
+        <div id="lobbyPlayers"></div>
+        <div id="hostCtrls" class="host-ctrls">
+          <div class="row"><button id="btnBotAdd" class="btn small ghost">+ Bot</button><button id="btnBotDel" class="btn small ghost">− Bot</button></div>
+          <label class="row">Manches
+            <select id="roundsSel"><option>3</option><option selected>5</option><option>7</option><option>9</option></select>
+          </label>
+          <button id="btnStart" class="btn big">Lancer la partie</button>
+        </div>
+        <p id="lobbyWait" class="muted">L'hôte va lancer la partie…</p>
+      </div>
+      <div class="panel">
+        <h3>Ton champion</h3>
+        <div id="champGrid" class="champ-grid"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Jeu -->
+<section id="game" class="screen hidden">
+  <canvas id="cv"></canvas>
+  <div id="hud">
+    <div id="topbar"><div id="roundInfo"></div><div id="timer"></div><div id="scores"></div></div>
+    <div id="killfeed"></div>
+    <div id="announce"></div>
+    <div id="center"></div>
+    <div id="tapisHint"></div>
+    <div id="bottom">
+      <div id="hpbar"><div id="hpfill"></div><div id="hpshield"></div><span id="hptext"></span></div>
+      <div id="abilities"></div>
+      <div id="myItems"></div>
+    </div>
+  </div>
+
+  <!-- Boutique -->
+  <div id="shop" class="overlay hidden">
+    <div class="shop-box">
+      <div class="shop-head">
+        <h2 id="shopTitle">Boutique</h2>
+        <div class="coins-big">🪙 <span id="myCoins">0</span></div>
+        <div id="shopTimer" class="shop-timer"></div>
+      </div>
+      <div id="roundResult" class="round-result"></div>
+      <div class="shop-grid">
+        <div class="panel">
+          <div class="tabs"><button class="tab on" data-tab="slots">🎰 Machine à sous</button><button class="tab" data-tab="roul">🎡 Roulette</button></div>
+          <div class="bets" id="bets"></div>
+          <div id="tab-slots" class="tabpane">
+            <div class="reels"><div class="reel" id="reel0">🍒</div><div class="reel" id="reel1">🍋</div><div class="reel" id="reel2">🔔</div></div>
+            <button id="btnSpin" class="btn big">Lancer</button>
+            <div class="paytable">3 identiques : 🍒×5 🍋×7 🔔×14 💎×40 <b>7️⃣×250</b> · 2 identiques : ×1,5 à ×5 · 💀 = perdu</div>
+          </div>
+          <div id="tab-roul" class="tabpane hidden">
+            <div class="roul-win"><div id="roulStrip" class="roul-strip"></div><div class="roul-needle"></div></div>
+            <div class="row roul-btns">
+              <button class="btn rouge" data-c="rouge">Rouge ×2</button>
+              <button class="btn vert" data-c="vert">Vert ×14</button>
+              <button class="btn noir" data-c="noir">Noir ×2</button>
+            </div>
+          </div>
+          <div id="casinoMsg" class="casino-msg"></div>
+        </div>
+        <div class="panel" id="boxPanel">
+          <h3>Boîtes surprises <span class="muted">(pour la prochaine manche)</span></h3>
+          <div class="row">
+            <button class="btn box-btn" data-b="boite">🎁 Boîte<br><small>30 🪙</small></button>
+            <button class="btn box-btn gold" data-b="coffre">🧰 Coffre doré<br><small>75 🪙 · meilleures chances</small></button>
+          </div>
+          <div class="case-win"><div id="caseStrip" class="case-strip"></div><div class="case-needle"></div></div>
+          <div id="boxMsg" class="casino-msg"></div>
+          <div class="muted">Tes objets (3 max) :</div>
+          <div id="shopItems" class="shop-items"></div>
+          <h3 class="mt">Champion</h3>
+          <div id="shopChamps" class="mini-champs"></div>
+        </div>
+      </div>
+      <div class="shop-foot">
+        <div id="readyList" class="ready-list"></div>
+        <button id="btnReady" class="btn big">Prêt ✔</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fin -->
+  <div id="end" class="overlay hidden">
+    <div class="end-box">
+      <h2>Fin de la partie</h2>
+      <div id="podium" class="podium"></div>
+      <div id="endTable"></div>
+      <div class="row center">
+        <button id="btnAgain" class="btn big">Revanche</button>
+        <button id="btnHome" class="btn ghost">Accueil</button>
+      </div>
+      <p id="endWait" class="muted"></p>
+    </div>
+  </div>
+</section>
+
+<div id="toasts"></div>
+
+<script src="sim.js"></script>
+<script src="net.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
