@@ -30,17 +30,28 @@ def overdue_count(col):
     return col.db.scalar(f"select count() from cards where queue = {QUEUE_REV} and due < ?", col.sched.today) or 0
 
 
-def due_left(col):
-    """Cards Anki still asks for today, all decks (its own daily limits
-    applied): reviews + new cards. Learning steps are left out, like in `done`."""
-    left = 0
+def due_today(col):
+    """Review cards due exactly today and not done yet (the backlog, due
+    before today, is counted apart by overdue_count)."""
+    return col.db.scalar(f"select count() from cards where queue = {QUEUE_REV} and due = ?", col.sched.today) or 0
+
+
+def due_parts(col):
+    """(reviews, new cards) Anki still asks for today, all decks (its own
+    daily limits applied). Learning steps are left out, like in `done`."""
+    rev = new = 0
     for node in col.sched.deck_due_tree().children:
-        left += node.review_count + node.new_count
-    return left
+        rev += node.review_count
+        new += node.new_count
+    return rev, new
+
+
+def due_left(col):
+    return sum(due_parts(col))
 
 
 def recent_days(col, num_days):
-    """[{day, cards, minutes, new_cards, review_count, retention, done, overdue}]
+    """[{day, cards, minutes, new_cards, review_count, retention, done, rev_done, overdue}]
     for the last `num_days` Anki days, today included, oldest first."""
     today = col.sched.today
     first = today - num_days + 1
@@ -66,6 +77,7 @@ def recent_days(col, num_days):
             "retention": round(sum(1 for x in reviews if x[0] > 1) / len(reviews), 4) if reviews else None,
             # a review card or a new card counts once, however many times it was pressed "À revoir"
             "done": len({x[4] for x in r if x[2] == 1 or (x[2] == 0 and x[3] == 0)}),
+            "rev_done": len({x[4] for x in r if x[2] == 1}),
             "overdue": overdue_count(col) if d == today else None,
         })
     return out

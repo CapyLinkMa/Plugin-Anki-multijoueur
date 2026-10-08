@@ -14,6 +14,7 @@
   let sortBy = 'points';
   let showLogin = false;
   let reportMonth = null;
+  let sheetId = null;       // the player shown in Stats → fiche joueur (default: the first other player)
   let pendingRender = false;
   let form = null;          // the "Nouveau défi" form, kept across re-renders
 
@@ -280,7 +281,7 @@
     const d = me.today_detail;
     const cell = (val, label, max) => `<div class="well"><div class="num" style="color:${val ? 'var(--me)' : 'var(--muted)'}">${max ? val : '+' + val}${max ? `<span class="tiny muted">/${max}</span>` : ''}</div><div class="label">${label}</div></div>`;
     return `<div class="card"><h2>Tes points aujourd'hui <span class="right">${me.today_points} pts</span></h2>
-      <div class="grid g4">${cell(d.day + d.extra, 'Journée', 10)}${cell(d.regular, 'Régularité')}${cell(d.no_backlog, 'Zéro retard')}${cell(d.retention, 'Rétention')}</div></div>`;
+      <div class="grid g4">${cell(d.day + d.extra, 'Journée', 10)}${cell(d.regular, 'Régularité')}${cell(d.no_backlog, 'Retards')}${cell(d.retention, 'Rétention')}</div></div>`;
   }
 
   function togetherCards(v) {
@@ -333,8 +334,8 @@
       ${seasonCard()}
       ${crit[0] === 'cards' ? '<div class="tiny muted">Programmes différents : le nombre de cartes est là pour info, il ne fait pas gagner.</div>' : ''}
       <div class="card"><h2>Comment on gagne des points</h2>
-        <div class="small muted">Ton objectif = ce qu'Anki te donne chaque jour. Faire plus de cartes que l'autre ne rapporte rien en soi : c'est <b>ta</b> journée bien faite qui compte.</div>
-        <div class="grid g2" style="gap:8px">${rule("jusqu'à 10", 'la part de ta journée faite (+3 si tu dépasses)')}${rule('+3', "régularité : fini hier et aujourd'hui")}${rule('+3', 'zéro carte en retard')}${rule('+2', "rétention d'au moins 85 %")}</div></div>
+        <div class="small muted">Ta journée = les cartes qu'Anki te donne <b>pour aujourd'hui</b> + tes nouvelles cartes à ton rythme habituel (ta moyenne des 2 dernières semaines). Les vieux retards ne sont pas dedans : les rattraper te fait dépasser 100 %. Faire plus de cartes que l'autre ne rapporte rien en soi : c'est <b>ta</b> journée bien faite qui compte.</div>
+        <div class="grid g2" style="gap:8px">${rule("jusqu'à 10", 'la part de ta journée faite (+3 si tu dépasses : retards rattrapés, nouvelles en plus)')}${rule('+3', "régularité : fini hier et aujourd'hui")}${rule('+3', 'retards : journée finie et zéro retard, ou au moins 5 % de retards en moins que la veille')}${rule('+2', "rétention d'au moins 85 %, ou au-dessus de ta propre moyenne du mois si elle est plus basse")}</div></div>
       <div class="grid g2">
         ${best('Meilleure journée', gr.best_day ? fmt(gr.best_day[1].cards) + ' cartes' : '—', gr.best_day ? `${esc(gr.best_day[0])} · ${frDate(gr.best_day[1].day)}` : '')}
         ${best('Plus longue série', gr.longest_streak && gr.longest_streak[1] ? `${gr.longest_streak[1]} jours` : '—', gr.longest_streak && gr.longest_streak[1] ? esc(gr.longest_streak[0]) : '')}</div>`;
@@ -453,6 +454,74 @@
     return `<svg viewBox="0 0 ${W} ${H}" width="100%">${grid}${labels}${lines}</svg><div>${legend}</div>`;
   }
 
+  // ---------------------------------------------------------------- Fiche joueur (Stats)
+  const DETAIL = [['day', 'journée'], ['extra', 'en plus'], ['regular', 'régularité'], ['no_backlog', 'retards'], ['retention', 'rétention']];
+  const pointsTitle = (d) => DETAIL.filter(([k]) => d[k]).map(([k, l]) => `${l} +${d[k]}`).join(' · ') || 'aucun point';
+  const pctOrDash = (v) => (v == null ? '—' : `${String(v).replace('.', ',')} %`);
+
+  function trend(cur, prev, unit = '', neutral = false) {
+    if (cur == null || prev == null || cur === prev) return '';
+    const up = cur > prev;
+    const diff = Math.abs(Math.round((cur - prev) * 10) / 10);
+    return ` <span class="trend ${up && !neutral ? 'up' : 'down'}" title="7 jours d'avant : ${fmt(prev)}${unit}">${up ? '▲' : '▼'} ${String(diff).replace('.', ',')}</span>`;
+  }
+
+  function sheetBars(p, me) {
+    const days = p.recent.slice().reverse();
+    const mine = me && !p.me ? me.recent.slice().reverse() : null;
+    const W = 560, H = 120, B = 18, T = 14;
+    const top = Math.max(1, ...days.map((x) => x.cards), ...(mine || []).map((x) => x.cards));
+    const step = W / days.length, bw = mine ? step * 0.36 : step * 0.6;
+    const h = (n) => (H - T - B) * n / top;
+    const bars = days.map((x, i) => {
+      const cx = i * step + step / 2;
+      const ghost = mine ? `<rect x="${cx + 1}" y="${H - B - h(mine[i].cards)}" width="${bw}" height="${h(mine[i].cards)}" rx="2" fill="var(--me)" opacity=".35"><title>Toi · ${frDate(mine[i].day)} : ${fmt(mine[i].cards)} cartes</title></rect>` : '';
+      const x0 = mine ? cx - bw - 1 : cx - bw / 2;
+      return `<rect x="${x0}" y="${H - B - h(x.cards)}" width="${bw}" height="${h(x.cards)}" rx="2" fill="${color(p)}" opacity="${x.done ? 1 : 0.6}"><title>${esc(p.pseudo)} · ${frDate(x.day)} : ${fmt(x.cards)} cartes, ${x.pct} % de sa journée</title></rect>${ghost}
+        ${x.cards ? `<text x="${mine ? cx - bw / 2 - 1 : cx}" y="${H - B - h(x.cards) - 3}" text-anchor="middle">${x.cards >= 1000 ? (x.cards / 1000).toFixed(1).replace('.', ',') + 'k' : x.cards}</text>` : ''}
+        <text x="${cx}" y="${H - 4}" text-anchor="middle">${new Date(x.day + 'T12:00:00').toLocaleDateString('fr-CA', { weekday: 'narrow' })}</text>`;
+    }).join('');
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" aria-label="Cartes par jour, 14 jours">${bars}</svg>
+      ${mine ? `<div class="tiny muted"><span class="key" style="background:${color(p)}"></span> ${esc(p.pseudo)} <span class="key" style="background:var(--me);opacity:.5"></span> toi · barre pâle : journée pas finie</div>` : ''}`;
+  }
+
+  function sheetCard() {
+    const list = players();
+    if (!list.length) return '';
+    const others = list.filter((x) => !x.me);
+    const p = player(sheetId) || others[0] || list[0];
+    const me = list.find((x) => x.me);
+    const a = p.avg7, b = p.avg_prev7, m = me && !p.me ? me.avg7 : null;
+    const t = p.recent[0];
+    const seen = p.live ? '<span class="live">étudie en ce moment</span>' : (p.last_seen ? `dernière activité ${ago(p.last_seen)}` : '');
+    const vs = (val, unit = '') => (m ? `<div class="tiny muted">toi : ${val == null ? '—' : fmt(val) + unit}</div>` : '');
+    const cell = (label, val, unit, prevVal, mineVal, neutral) => `<div class="well"><div class="label">${label}</div>
+      <div class="num" style="font-size:16px">${val == null ? '—' : (unit === ' %' ? pctOrDash(val) : fmt(val) + unit)}${trend(val, prevVal, unit, neutral)}</div>${vs(mineVal, unit)}</div>`;
+    const rows = p.recent.map((x) => `<tr class="${x.cards ? '' : 'off'}"><td>${frDate(x.day)}${x.done ? ' ✅' : ''}</td><td>${fmt(x.cards)}</td><td>${fmt(x.minutes)}</td>
+      <td>${fmt(x.new_cards)}</td><td>${fmt(x.reviews)}</td><td>${pctOrDash(x.retention)}</td><td>${x.cards ? x.pct + ' %' : '—'}</td>
+      <td title="${pointsTitle(x.detail)}"><b>${x.points}</b></td><td>${x.overdue == null ? '—' : fmt(x.overdue)}</td></tr>`).join('');
+    return `<div class="card"><h2>Fiche joueur <span class="right">les 14 derniers jours</span></h2>
+      ${list.length > 1 ? `<div class="chips">${[...others, ...(me ? [me] : [])].map((x) => `<button class="chip ${x.id === p.id ? 'on' : ''}" data-sheet="${x.id}">${esc(x.avatar)} ${esc(x.pseudo)}${x.me ? ' (toi)' : ''}</button>`).join('')}</div>` : ''}
+      <div class="row">${dot(p)}<div><div>${name({ ...p, live: false })} ${levelTag(p.id)}</div><div class="tiny muted">${seen}${p.program ? ` · ${esc(p.program)}` : ''}</div></div></div>
+      <div class="well small" style="display:block">Aujourd'hui : <b>${fmt(t.cards)}</b> ${plural(t.cards, 'carte', 'cartes')} en <b>${fmt(t.minutes)} min</b>
+        · ${fmt(t.new_cards)} ${plural(t.new_cards, 'nouvelle', 'nouvelles')} · rétention ${pctOrDash(t.retention)}
+        · <b>${t.pct} %</b> de sa journée · <b title="${pointsTitle(t.detail)}">${t.points} pts</b>${t.overdue == null ? '' : ` · ${fmt(t.overdue)} en retard`}</div>
+      <div class="label">Moyenne par jour, 7 derniers jours <span class="tiny">(▲▼ : comparé aux 7 jours d'avant)</span></div>
+      <div class="grid g4">
+        ${cell('Cartes', a.cards, '', b.cards, m && m.cards)}
+        ${cell('Minutes', a.minutes, ' min', b.minutes, m && m.minutes)}
+        ${cell('Nouvelles', a.new_cards, '', b.new_cards, m && m.new_cards)}
+        ${cell('Rétention', a.retention, ' %', b.retention, m && m.retention)}
+        ${cell('Points', a.points, '', b.points, m && m.points)}
+        ${cell('% de sa journée', a.pct, ' %', b.pct, m && m.pct)}
+        ${cell('Jours étudiés', a.studied, '/7', b.studied, m && m.studied)}
+        ${cell('Secondes / carte', a.sec_per_card, ' s', b.sec_per_card, m && m.sec_per_card, true)}</div>
+      <div class="label">Cartes par jour</div>${sheetBars(p, me)}
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Jour</th><th>Cartes</th><th>Min</th><th>Nouv.</th><th>Rév.</th><th>Rét.</th><th>Journée</th><th>Pts</th><th>Retards</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+      <div class="tiny muted">Survole les points pour voir d'où ils viennent. « Journée » = la part de sa journée Anki faite (cartes dues aujourd'hui + nouvelles à son rythme).</div></div>`;
+  }
+
   function screenStats() {
     const v = S.view;
     if (!v) return '<div class="card muted">Chargement…</div>';
@@ -467,7 +536,7 @@
     const recs = players().map((p) => `<div class="rank-row">${dot(p, 'sm')}<div class="body"><div>${name({ ...p, live: false })}</div>
       <div class="tiny muted">meilleure journée ${p.records.best_day ? `<b>${fmt(p.records.best_day.cards)}</b> (${frDate(p.records.best_day.day)})` : '—'}
       · meilleure semaine ${p.records.best_week ? `<b>${fmt(p.records.best_week.cards)}</b>` : '—'} · plus longue série <b>${p.records.longest_streak} j</b></div></div></div>`).join('');
-    return `<div class="card"><h2>Les 30 derniers jours <span class="right">% de sa journée, chaque jour</span></h2>${chartSvg(v.chart)}</div>
+    return `${sheetCard()}<div class="card"><h2>Les 30 derniers jours <span class="right">% de sa journée, chaque jour</span></h2>${chartSvg(v.chart)}</div>
       <div class="card"><h2>Carte de chaleur du groupe <span class="right">26 semaines</span></h2><div class="heat">${heat}</div>
         <div class="legend">journée finie par : <span class="hc"></span> personne <span class="hc l1"></span> 1 joueur <span class="hc l2"></span> plusieurs <span class="hc all"></span> tout le monde</div></div>
       <div class="card list"><h2 style="padding-top:8px">Records</h2>${recs}</div>
@@ -653,7 +722,7 @@
         : `Chacun doit atteindre l'objectif. ${f.metric === 'days' ? `Il y a ${days} jours.` : `Une bonne journée ≈ 15 pts.`}`;
     } else if (f.kind === 'zero') {
       fields = `<div class="row"><label>Jours sans retard</label><input type="number" data-f="target" value="${f.target}" min="1" max="${days}" style="width:90px"><span class="tiny muted">sur ${days} jours</span></div>${dates()}`;
-      help = 'Un jour compte si tu finis ta journée et qu\'il ne reste aucune carte en retard. +3 pts par jour visé à qui réussit.';
+      help = 'Un jour compte si tu finis ta journée et qu\'il ne reste aucune carte en retard, ou au moins 5 % de moins que la veille. +3 pts par jour visé à qui réussit.';
     } else if (f.kind === 'race') {
       fields = `<div class="row"><label>Premier à</label><input type="number" data-f="target" value="${f.target}" min="20" style="width:100px"><span class="tiny muted">points</span></div>${dates(false)}`;
       help = 'Les points comptent à partir du début. Le premier qui atteint le total gagne (30 jours max).';
@@ -865,6 +934,7 @@
   }
 
   function bindStats() {
+    document.querySelectorAll('[data-sheet]').forEach((b) => { b.onclick = () => { sheetId = b.dataset.sheet; render(); }; });
     document.querySelectorAll('[data-month]').forEach((b) => { b.onclick = () => { reportMonth = b.dataset.month; render(); }; });
   }
 

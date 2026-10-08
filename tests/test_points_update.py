@@ -44,6 +44,26 @@ class Points(unittest.TestCase):
         self.assertEqual(p, {"day": 5, "extra": 0, "regular": 0, "no_backlog": 0, "retention": 0, "total": 5})
         self.assertEqual(group.day_points(None, self.member)["total"], 0)
 
+    def test_backlog_bonus_for_zero_or_a_clear_drop(self):
+        full = lambda od: row(100, 100, overdue=od)
+        self.assertEqual(group.day_points(full(0), self.member)["no_backlog"], 3)
+        self.assertEqual(group.day_points(full(180), self.member, full(200))["no_backlog"], 3)   # -10 %
+        self.assertEqual(group.day_points(full(196), self.member, full(196))["no_backlog"], 0)   # forgotten deck
+        self.assertEqual(group.day_points(full(198), self.member, full(200))["no_backlog"], 0)   # -1 % only
+        self.assertEqual(group.day_points(row(50, 100, overdue=0), self.member)["no_backlog"], 0)   # day not finished
+
+    def test_retention_compares_with_ones_own_average(self):
+        history = {f"2026-09-{i:02d}": {"day": f"2026-09-{i:02d}", "review_count": 100, "retention": 0.76}
+                   for i in range(10, 30)}
+        day = row(100, 100, review_count=100, retention=0.78, day="2026-09-30")
+        self.assertEqual(group.day_points(day, self.member, None, history)["retention"], 2)   # above own 76 %
+        self.assertEqual(group.day_points(day, self.member)["retention"], 0)                   # no history: 85 %
+        low = row(100, 100, review_count=100, retention=0.70, day="2026-09-30")
+        self.assertEqual(group.day_points(low, self.member, None, history)["retention"], 0)
+        good = {k: dict(v, retention=0.95) for k, v in history.items()}
+        self.assertEqual(group.day_points(row(100, 100, review_count=100, retention=0.86, day="2026-09-30"),
+                                          self.member, None, good)["retention"], 2)            # 85 % is enough
+
     def test_retention_needs_enough_reviews(self):
         self.assertEqual(group.day_points(row(10, 100, review_count=10, retention=1.0), self.member)["retention"], 0)
         self.assertEqual(group.day_points(row(30, 100, review_count=25, retention=0.85), self.member)["retention"], 2)
@@ -71,20 +91,49 @@ class AutomaticGoal(unittest.TestCase):
         self.api = api_mod.MultiAPI(None, lambda: None, os.path.join(self.tmp, "state.json"))
 
     def test_goal_gives_the_share_of_distinct_cards_done(self):
-        today = {"day": "2026-10-01", "cards": 390, "done": 300, "overdue": 120}
-        self.api.note_target(today, 200)                 # 300 done + 200 still due = 500 asked
+        today = {"day": "2026-10-01", "cards": 390, "done": 300, "rev_done": 300, "overdue": 0}
+        self.api.note_target(today, 200, 0, 200)          # 300 reviews done + 200 still due = 500 asked
         out = self.api.server_row(today, 100)
         self.assertNotIn("done", out)
+        self.assertNotIn("rev_done", out)
         self.assertAlmostEqual(out["cards"] / out["goal"], 300 / 500, places=2)   # "À revoir" presses don't count twice
 
     def test_finishing_the_day_validates_it(self):
-        today = {"day": "2026-10-01", "cards": 650, "done": 500, "overdue": 0}
-        self.api.note_target(today, 0)
+        today = {"day": "2026-10-01", "cards": 650, "done": 500, "rev_done": 400, "overdue": 0}
+        self.api.note_target(today, 0, 0, 0, pace=100)
         out = self.api.server_row(today, 100)
         self.assertTrue(group.validated(out, {"daily_goal": 100}))
 
+    def test_an_old_backlog_is_not_part_of_the_day(self):
+        # a forgotten deck: 200 overdue cards that Anki still lists every day
+        today = {"day": "2026-10-01", "cards": 300, "done": 250, "rev_done": 150, "overdue": 200}
+        self.api.note_target(today, 200, 0, 0, pace=100)   # today's 150 reviews all done, 100 new cards done
+        out = self.api.server_row(today, 100)
+        self.assertTrue(group.validated(out, {"daily_goal": 100}))
+        self.assertLess(out["cards"] / out["goal"], 1.01)
+
+    def test_overdue_cards_caught_up_go_beyond_100(self):
+        start = {"day": "2026-10-01", "cards": 0, "done": 0, "rev_done": 0, "overdue": 200}
+        self.api.note_target(start, 300, 50, 100, pace=50)     # morning: 100 due today + 200 overdue, 50 new
+        end = {"day": "2026-10-01", "cards": 260, "done": 250, "rev_done": 200, "overdue": 100}
+        self.api.note_target(end, 100, 0, 0, pace=50)          # evening: today's 100 + 100 overdue, 50 new
+        self.assertEqual(self.api.store["targets"]["2026-10-01"]["goal"], 150)
+        out = self.api.server_row(end, 100)
+        self.assertAlmostEqual(group.pct(out, {}), 1.5, places=2)
+        self.assertEqual(group.day_points(out, {})["extra"], 3)
+
+    def test_new_cards_count_at_ones_own_pace(self):
+        # Anki offers 900 new cards (20 a deck, many decks): only the usual 60 are asked
+        today = {"day": "2026-10-01", "cards": 160, "done": 160, "rev_done": 100, "overdue": 0}
+        self.api.note_target(today, 0, 840, 0, pace=60)
+        self.assertEqual(self.api.store["targets"]["2026-10-01"]["goal"], 160)
+        days = [{"day": f"2026-09-{i:02d}", "cards": 50 if i % 2 else 0, "new_cards": 30 if i % 2 else 0} for i in range(10, 30)]
+        days.append({"day": "2026-09-30", "cards": 999, "new_cards": 999})   # today is left out
+        self.assertEqual(self.api.new_card_pace(days), 30)
+        self.assertIsNone(self.api.new_card_pace([{"day": "2026-09-30", "cards": 5, "new_cards": 5}]))
+
     def test_past_day_keeps_its_target_and_backlog(self):
-        self.api.note_target({"day": "2026-09-30", "cards": 100, "done": 100, "overdue": 0}, 300)
+        self.api.note_target({"day": "2026-09-30", "cards": 100, "done": 100, "rev_done": 100, "overdue": 0}, 300, 0, 300)
         # later, on the phone, the rest was done: the review log knows it, the target stays
         past = {"day": "2026-09-30", "cards": 520, "done": 400, "overdue": None}
         out = self.api.server_row(past, 100)
@@ -93,11 +142,20 @@ class AutomaticGoal(unittest.TestCase):
         reloaded = api_mod.MultiAPI(None, lambda: None, os.path.join(self.tmp, "state.json"))
         self.assertEqual(reloaded.server_row(past, 100)["goal"], out["goal"])
 
-    def test_days_never_seen_use_the_profile_goal(self):
+    def test_targets_from_before_v9_leave_the_backlog_out(self):
+        self.api.store["targets"]["2026-10-01"] = {"total": 877, "overdue": 196}
+        out = self.api.server_row({"day": "2026-10-01", "cards": 681, "done": 681}, 100)
+        self.assertEqual(out["goal"], 681)
+
+    def test_days_never_seen_use_the_usual_goal_or_the_profile_goal(self):
         self.assertEqual(self.api.server_row({"day": "2026-01-01", "cards": 50, "done": 40}, 80)["goal"], 80)
+        for day, goal in (("2026-09-28", 200), ("2026-09-29", 300), ("2026-09-30", 250)):
+            self.api.store["targets"][day] = {"total": 999, "overdue": 0, "goal": goal}
+        out = self.api.server_row({"day": "2026-10-01", "cards": 300, "done": 250}, 80)   # phone only
+        self.assertAlmostEqual(out["cards"] / out["goal"], 1.0, places=2)
 
     def test_goal_stays_in_the_servers_limits(self):
-        self.api.note_target({"day": "2026-10-01", "cards": 0, "done": 0}, 3)
+        self.api.note_target({"day": "2026-10-01", "cards": 0, "done": 0, "rev_done": 0}, 3, 0, 3)
         self.assertEqual(self.api.server_row({"day": "2026-10-01", "cards": 0, "done": 0}, 100)["goal"], 10)
 
 

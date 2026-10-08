@@ -168,3 +168,10 @@ details.card[open] { gap: 10px; }
   background: var(--card2); color: var(--ink); border: 1px solid var(--line); field-sizing: content; }
 .chat textarea:focus { outline: none; border-color: var(--me); }
 .bubble { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* fiche joueur (Stats) */
+.trend { font-size: 11px; font-weight: 500; font-family: var(--body); }
+.trend.up { color: var(--done); } .trend.down { color: var(--muted); }
+.tbl-wrap { overflow-x: auto; margin: 0 -4px; }
+.tbl tr.off td { color: var(--muted); opacity: .6; }
+.key { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: middle; margin-left: 6px; }

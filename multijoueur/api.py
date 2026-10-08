@@ -21,7 +21,9 @@ REACTION_CODES = {v: k for k, v in REACTIONS.items()}
 USERNAME = re.compile(r"[a-z0-9._-]{3,24}")
 FIRST_SYNC_DAYS = 365
 SYNC_DAYS = 14   # re-sent every time: reviews synced in later from a phone (no add-on there) are caught up
-TARGET_DAYS_KEPT = 60
+TARGET_DAYS_KEPT = 400   # a resend of old days (new profile goal) must find the same goals
+PACE_DAYS = 14           # the new-card part of the goal: one's own pace over the last 14 days
+LOCAL_KEYS = ("done", "rev_done")   # read from Anki to build the goal, never sent
 LIVE_DOT_MINUTES = 5        # the little dot during reviews: someone counts as studying if seen in the last 5 min
 FRESH_MESSAGE_MINUTES = 30  # messages older than that (Anki was closed) are only marked as seen, not shown
 LIVE_KINDS = ("msg", "encourage", "bet", "challenge", "pomo")   # what can pop up as a bubble
@@ -110,37 +112,79 @@ class MultiAPI:
             return None
         days = metrics.recent_days(col, self.days_to_send())
         try:
-            self.note_target(days[-1], metrics.due_left(col))
+            rev_left, new_left = metrics.due_parts(col)
+            self.note_target(days[-1], rev_left, new_left, metrics.due_today(col), self.new_card_pace(days))
         except Exception:
             pass   # no automatic goal this time: the last one seen today (or the profile's) is used
         return days
 
-    def note_target(self, today, left):
-        """Remembers what Anki asked for today (done so far + still due), and
-        the backlog: the next days only re-send numbers read from the review
-        log, which knows neither."""
+    @staticmethod
+    def new_card_pace(days):
+        """New cards a day, on average, on the days studied in the last two
+        weeks (today left out): the new-card part of the goal. Anki's own
+        limits add up over every deck (often hundreds a day that nobody
+        does), which made the goal impossible and the % meaningless."""
+        studied = [r["new_cards"] for r in days[-PACE_DAYS - 1:-1] if (r.get("cards") or 0) > 0]
+        return round(sum(studied) / len(studied)) if studied else None
+
+    def note_target(self, today, rev_left, new_left=0, due_today=None, pace=None):
+        """Remembers today's goal in distinct cards, and the backlog: the next
+        days only re-send numbers read from the review log, which knows
+        neither. The goal is *today's* work, so that an old backlog (or a
+        deck nobody opens any more) doesn't make the day impossible:
+          - reviews due today (done or still due), within Anki's limits;
+          - new cards: what Anki offers, at most one's own usual pace.
+        Overdue cards caught up and extra new cards go beyond 100 %."""
         targets = self.store.setdefault("targets", {})
-        targets[today["day"]] = {"total": (today.get("done") or 0) + left, "overdue": today.get("overdue")}
+        old = targets.get(today["day"]) or {}
+        overdue = today.get("overdue")
+        seen = [x for x in (old.get("overdue_peak"), old.get("overdue"), overdue) if x is not None]
+        peak = max(seen) if seen else None
+        done = today.get("done") or 0
+        rev_done = min(done, today.get("rev_done", done) or 0)
+        new_asked = done - rev_done + new_left
+        fresh = rev_done + rev_left
+        if due_today is not None:
+            caught_up = max(0, (peak or 0) - (overdue or 0))   # overdue cards done today
+            fresh = min(fresh, due_today + max(0, rev_done - caught_up))
+        goal = fresh + (new_asked if pace is None else min(new_asked, pace))
+        targets[today["day"]] = {"total": done + rev_left + new_left, "overdue": overdue, "overdue_peak": peak,
+                                 "goal": goal}
         for day in sorted(targets)[:-TARGET_DAYS_KEPT]:
             del targets[day]
         self._save()
 
+    def _distinct_goal(self, day):
+        """The day's goal in distinct cards: the one noted that day; before v9
+        (only the total Anki asked was kept), that total minus the backlog;
+        a day this computer never saw (phone only), one's usual goal of the
+        two weeks before. None: nothing known, the profile's goal is used."""
+        targets = self.store.get("targets", {})
+        t = targets.get(day)
+        if t and t.get("goal") is not None:
+            return t["goal"]
+        if t and t.get("total"):
+            return t["total"] - (t.get("overdue") or 0) if t["total"] > (t.get("overdue") or 0) else t["total"]
+        start = (datetime.date.fromisoformat(day) - datetime.timedelta(days=PACE_DAYS)).isoformat()
+        usual = sorted(x["goal"] for k, x in targets.items() if start <= k < day and x.get("goal"))
+        return usual[len(usual) // 2] if usual else None
+
     def server_row(self, row, fallback_goal):
-        """A day as stored on the server. The automatic goal is what Anki asked
-        that day; the server only keeps `cards` and `goal`, so the goal is
-        scaled to give cards / goal = distinct cards done / cards asked (the
-        same % for any version of the add-on, "À revoir" presses don't count
-        twice). Days Anki on this computer never saw use the profile's goal."""
-        out = {k: v for k, v in row.items() if k != "done"}
-        target = self.store.get("targets", {}).get(row["day"])
-        if target and target.get("total"):
-            done = row.get("done") or 0
-            goal = (row.get("cards") or 0) * target["total"] / done if done else target["total"]
-            out["goal"] = min(5000, max(10, round(goal)))
-            if out.get("overdue") is None:
-                out["overdue"] = target.get("overdue")
-        else:
+        """A day as stored on the server. The server only keeps `cards` and
+        `goal`, so the goal is scaled to give cards / goal = distinct cards
+        done / distinct cards of the day's goal (the same % for any version
+        of the add-on, "À revoir" presses don't count twice)."""
+        out = {k: v for k, v in row.items() if k not in LOCAL_KEYS}
+        goal = self._distinct_goal(row["day"])
+        if goal is None:
             out["goal"] = fallback_goal
+            return out
+        done = row.get("done") or 0
+        scaled = (row.get("cards") or 0) * goal / done if done else goal
+        out["goal"] = min(5000, max(10, round(scaled)))
+        target = self.store.get("targets", {}).get(row["day"])
+        if out.get("overdue") is None and target:
+            out["overdue"] = target.get("overdue")
         return out
 
     def days_to_send(self):

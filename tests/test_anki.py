@@ -49,7 +49,20 @@ class Metrics(unittest.TestCase):
         self.assertTrue(all(d["cards"] == 0 for d in days[:-1]))
         self.assertEqual(today["day"], metrics.day_date(self.col, self.col.sched.today))
         self.assertEqual(today["done"], 3)            # 3 distinct new cards
+        self.assertEqual(today["rev_done"], 0)
         self.assertEqual(metrics.due_left(self.col), 7)   # 10 new cards, 3 started: 7 left
+        self.assertEqual(metrics.due_parts(self.col), (0, 7))
+        self.assertEqual(metrics.due_today(self.col), 0)
+
+    def test_due_today_leaves_the_backlog_out(self):
+        cids = list(self.col.find_cards(""))
+        today = self.col.sched.today
+        # 2 review cards due today, 3 overdue (due 5 days ago)
+        for cid, due in zip(cids, [today, today, today - 5, today - 5, today - 5]):
+            self.col.db.execute("update cards set type = 2, queue = 2, ivl = 10, due = ? where id = ?", due, cid)
+        self.assertEqual(metrics.due_today(self.col), 2)
+        self.assertEqual(metrics.overdue_count(self.col), 3)
+        self.assertEqual(metrics.due_parts(self.col)[0], 5)
 
 
 if __name__ == "__main__":

@@ -153,7 +153,7 @@ class Days:
 
     def points(self, day):
         if day not in self._pts:
-            self._pts[day] = G.day_points(self.row(day), self.m, self.row(day - datetime.timedelta(days=1)))
+            self._pts[day] = G.day_points(self.row(day), self.m, self.row(day - datetime.timedelta(days=1)), self.rows)
         return self._pts[day]
 
     def finished(self, day):

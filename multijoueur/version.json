@@ -1,4 +1,4 @@
 {
-    "version": 8,
-    "nouveautes": "Écrire est plus fluide : la zone de message s'agrandit sans ralentir, et le point vert « il révise » s'arrête de clignoter pendant que tu tapes une réponse."
+    "version": 9,
+    "nouveautes": "Points plus justes : ta journée = les cartes dues aujourd'hui + tes nouvelles cartes à ton rythme (les vieux retards ne comptent plus contre toi), et une fiche joueur dans Stats pour voir en détail les 14 derniers jours de l'autre."
 }

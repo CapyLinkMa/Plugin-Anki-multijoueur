@@ -86,6 +86,18 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
   en `transform`/`opacity` (plus de `box-shadow` redessiné à chaque image) et se met en pause (`mj-typing`) quand une
   zone de texte de l'écran de révision a le focus : dans Anki, une animation sans fin retarde un peu les touches.
 
+- **v9** (2026-10-08, Xyroob) : **points plus équitables**. Constat sur nos vraies données : « ce qu'Anki demande »
+  comptait les vieux retards (paquets plus ouverts) et la somme des limites de nouvelles cartes de tous les paquets,
+  donc personne ne finissait jamais sa journée (8 pts sur 18 jamais gagnés) et celui qui avait le plus de retards
+  était écrasé. Maintenant l'objectif (`api.note_target`, `targets[jour].goal` en cartes distinctes) = révisions dues
+  **aujourd'hui** (`metrics.due_today`, limites d'Anki comprises) + nouvelles cartes au plus à **son rythme**
+  (moyenne des 14 derniers jours étudiés, `api.new_card_pace`). Retards rattrapés et nouvelles en plus → au-delà de
+  100 %. Bonus retards : zéro retard **ou** au moins 5 % de moins que la veille (`group.backlog_ok`). Rétention :
+  ≥ 85 % **ou** ≥ sa propre moyenne des 4 semaines d'avant (`group.retention_bar`). Jour vu seulement sur téléphone :
+  objectif habituel (médiane des 14 jours d'avant) au lieu de l'objectif du profil. Schéma inchangé.
+  **Fiche joueur** dans Stats (`group.recent`, `group.averages`) : aujourd'hui, moyennes sur 7 jours avec tendance et
+  comparaison avec moi, barres des cartes par jour, tableau des 14 derniers jours (points détaillés au survol).
+
 ## Travailler à deux sur ce dépôt
 - Avant de commencer : `git pull`. En finissant une partie : commit clair en français + `git push`.
 - Noter dans « En cours » ci-dessous ce sur quoi on travaille, pour ne pas faire la même chose.
@@ -107,6 +119,7 @@ v6 (CapyLinkMa) : notifications à gauche, réglages, bulles cliquables + minute
 résultats, défis rapides, non-lus.
 v7 (Xyroob) : messages écrits librement, point vert plus visible, minuteur du pomodoro réductible.
 v8 (CapyLinkMa) : frappe plus fluide (zone de message, point vert en pause pendant qu'on tape).
+v9 (Xyroob) : points plus équitables (journée sans les vieux retards, nouvelles à son rythme), fiche joueur dans Stats.
 
 ## Reste à faire (choisi)
 Tout ce qui a été choisi est fait. Idées non choisies : 4, 10, 18, 30, et 31-33 (pont vers les casinos).

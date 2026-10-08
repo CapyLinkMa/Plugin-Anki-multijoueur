@@ -7,13 +7,18 @@ mostly **the share of one's own daily goal** (capped, so one huge day can't
 buy the week), regularity and retention; raw card counts stay visible but
 only as information.
 
-Points (decided with Xyroob, 2026-10-01): the goal is what Anki asks each
-day (see api.server_row), and points reward doing *your* day well, never the
-raw volume, so a lighter program can keep up with a heavier one:
+Points (decided with Xyroob, 2026-10-01, made fairer in v9): the goal is
+*today's* work in Anki (see api.note_target: reviews due today + new cards at
+one's own pace; the old backlog is left out), and points reward doing *your*
+day well, never the raw volume, so a lighter program can keep up with a
+heavier one:
   - up to 10 for the share of the day done, +3 at most beyond 100 %
+    (backlog cards caught up, more new cards than usual)
   - +3 regularity: goal reached today and yesterday
-  - +3 zero backlog: goal reached with no overdue card left
-  - +2 retention ≥ 85 % (at least 20 reviews)
+  - +3 backlog: goal reached and no overdue card left, or at least 5 % fewer
+    than the day before (a forgotten deck no longer costs 3 points forever)
+  - +2 retention ≥ 85 %, or ≥ one's own 4-week average when it is lower
+    (harder material, e.g. médecine, keeps a fair chance) - 20 reviews min.
 """
 
 import datetime
@@ -31,6 +36,10 @@ PTS_NO_BACKLOG = 3
 PTS_RETENTION = 2
 RETENTION_MIN = 0.85
 RETENTION_REVIEWS = 20
+RETENTION_WEEKS = 4        # one's own retention baseline: the 4 weeks before the day
+RETENTION_BASE_REVIEWS = 100
+BACKLOG_DROP = 0.05        # the backlog bonus also counts a drop of at least 5 %
+RECENT_DAYS = 14           # the player sheet (Stats): the last 14 days in detail
 
 
 def d(iso):
@@ -59,8 +68,37 @@ def validated(row, member):
     return bool(row) and (row.get("cards") or 0) >= goal_of(row, member)
 
 
-def day_points(row, member, prev_row=None):
-    """{"total", "day", "extra", "regular", "no_backlog", "retention"} for one day."""
+def backlog_ok(row, prev_row):
+    """No overdue card left, or clearly fewer than the day before."""
+    now = (row or {}).get("overdue")
+    if now is None:
+        return False
+    if now == 0:
+        return True
+    before = (prev_row or {}).get("overdue")
+    return bool(before) and before - now >= max(1, BACKLOG_DROP * before)
+
+
+def retention_bar(rows, day_iso):
+    """85 %, or one's own average of the 4 weeks before when it is lower:
+    retention depends on the material and on Anki's settings, not only on
+    effort, so each player is first compared with themselves."""
+    if not rows or not day_iso:
+        return RETENTION_MIN
+    start = iso(d(day_iso) - datetime.timedelta(weeks=RETENTION_WEEKS))
+    reviews = kept = 0
+    for day, r in rows.items():
+        if start <= day < day_iso and r.get("retention") is not None:
+            reviews += r.get("review_count") or 0
+            kept += (r.get("review_count") or 0) * r["retention"]
+    if reviews < RETENTION_BASE_REVIEWS:
+        return RETENTION_MIN
+    return min(RETENTION_MIN, round(kept / reviews, 4))
+
+
+def day_points(row, member, prev_row=None, rows=None):
+    """{"total", "day", "extra", "regular", "no_backlog", "retention"} for one day.
+    `rows` (all the player's days) gives their own retention baseline."""
     out = {"day": 0, "extra": 0, "regular": 0, "no_backlog": 0, "retention": 0}
     if row and (row.get("cards") or 0) > 0:
         p = pct(row, member)
@@ -69,12 +107,17 @@ def day_points(row, member, prev_row=None):
         done = validated(row, member)
         if done and validated(prev_row, member):
             out["regular"] = PTS_REGULAR
-        if done and row.get("overdue") == 0:
+        if done and backlog_ok(row, prev_row):
             out["no_backlog"] = PTS_NO_BACKLOG
-        if (row.get("review_count") or 0) >= RETENTION_REVIEWS and (row.get("retention") or 0) >= RETENTION_MIN:
+        if ((row.get("review_count") or 0) >= RETENTION_REVIEWS
+                and (row.get("retention") or 0) >= retention_bar(rows, row.get("day"))):
             out["retention"] = PTS_RETENTION
     out["total"] = sum(out.values())
     return out
+
+
+def _prev(rows, day):
+    return rows.get(iso(day - datetime.timedelta(days=1)))
 
 
 def by_user(day_rows):
@@ -114,7 +157,7 @@ def week_stats(rows, member, today):
     start = monday(today)
     days = [start + datetime.timedelta(days=i) for i in range((today - start).days + 1)]
     week = [rows.get(iso(x)) for x in days]
-    pts = [day_points(rows.get(iso(x)), member, rows.get(iso(x - datetime.timedelta(days=1)))) for x in days]
+    pts = [day_points(rows.get(iso(x)), member, _prev(rows, x), rows) for x in days]
     reviews = sum((r or {}).get("review_count") or 0 for r in week)
     kept = sum(((r or {}).get("retention") or 0) * ((r or {}).get("review_count") or 0) for r in week)
     return {
@@ -139,6 +182,45 @@ def records(rows, member):
         "best_day": {"day": best_day["day"], "cards": best_day.get("cards") or 0} if best_day and best_day.get("cards") else None,
         "best_week": {"monday": best_week[0], "cards": best_week[1]} if best_week and best_week[1] else None,
         "longest_streak": longest_streak(rows, member),
+    }
+
+
+def recent(rows, member, today, n=RECENT_DAYS):
+    """The player sheet: each of the last `n` days in detail, newest first."""
+    out = []
+    for i in range(n):
+        day = today - datetime.timedelta(days=i)
+        r = rows.get(iso(day)) or {}
+        pts = day_points(r or None, member, _prev(rows, day), rows)
+        out.append({
+            "day": iso(day), "cards": r.get("cards") or 0, "minutes": r.get("minutes") or 0,
+            "new_cards": r.get("new_cards") or 0, "reviews": r.get("review_count") or 0,
+            "retention": round(100 * r["retention"], 1) if r.get("retention") is not None else None,
+            "overdue": r.get("overdue"), "pct": round(100 * pct(r or None, member)),
+            "done": validated(r or None, member), "points": pts["total"], "detail": pts,
+        })
+    return out
+
+
+def averages(rows, member, today, skip):
+    """Per-day averages over 7 days, `skip` days back (0: the last 7 days
+    with today, 7: the 7 days before, for the trend arrows)."""
+    days = [today - datetime.timedelta(days=skip + i) for i in range(7)]
+    week = [rows.get(iso(x)) or {} for x in days]
+    studied = [r for r in week if (r.get("cards") or 0) > 0]
+    cards = sum(r.get("cards") or 0 for r in week)
+    minutes = sum(r.get("minutes") or 0 for r in week)
+    reviews = sum(r.get("review_count") or 0 for r in week)
+    kept = sum((r.get("retention") or 0) * (r.get("review_count") or 0) for r in week)
+    return {
+        "studied": len(studied),
+        "cards": round(cards / 7), "minutes": round(minutes / 7), "new_cards": round(sum(r.get("new_cards") or 0 for r in week) / 7),
+        "reviews": round(reviews / 7),
+        "retention": round(100 * kept / reviews, 1) if reviews else None,
+        "sec_per_card": round(60 * minutes / cards, 1) if cards else None,
+        "pct": round(100 * sum(pct(r or None, member) for r in week) / 7),
+        "points": round(sum(day_points(rows.get(iso(x)), member, _prev(rows, x), rows)["total"] for x in days) / 7, 1),
+        "finished": sum(1 for r in week if validated(r or None, member)),
     }
 
 
@@ -177,7 +259,7 @@ def build(members, day_rows, today_iso, me, now=None):
     for m in members:
         rows = rows_by_user.get(m["id"], {})
         today_row = rows.get(today_iso)
-        detail = day_points(today_row, m, rows.get(iso(today - datetime.timedelta(days=1))))
+        detail = day_points(today_row, m, _prev(rows, today), rows)
         players.append({
             "id": m["id"], "pseudo": m["pseudo"], "avatar": m.get("avatar") or "🙂", "me": m["id"] == me,
             "goal": int(m.get("daily_goal") or 100), "program": m.get("program"),
@@ -186,6 +268,8 @@ def build(members, day_rows, today_iso, me, now=None):
             "today_points": detail["total"], "today_detail": detail,
             "yesterday_done": validated(rows.get(iso(today - datetime.timedelta(days=1))), m),
             "streak": streak(rows, m, today), "week": week_stats(rows, m, today), "records": records(rows, m),
+            "last_seen": m.get("status_at"), "recent": recent(rows, m, today),
+            "avg7": averages(rows, m, today, 0), "avg_prev7": averages(rows, m, today, 7),
         })
     ranked = sorted(players, key=lambda p: (-p["week"]["points"], -p["week"]["pct"], p["pseudo"].lower()))
     regular = sorted(players, key=lambda p: (-p["streak"], -p["week"]["validated"], p["pseudo"].lower()))
