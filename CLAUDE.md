@@ -114,6 +114,14 @@ que chacun installe à côté du sien pour étudier ensemble à distance.
   le distingue du format v10). Un mot de 5 s quand quelqu'un passe devant ou finit son paquet. Le nom du paquet
   n'est pas envoyé.
 
+- **v12** (2026-10-09, Xyroob) : **heure de fin du paquet** pendant les révisions (« 🏁 14 h 35 », pastille discrète sous
+  la course, même seul ; réglage `eta`). `metrics.deck_eta` compte les **réponses** restantes, pas les cartes : nouvelle ×
+  passages le 1er jour (habitude mesurée, ~3), révision × (1 + taux d'oubli × passages après un oubli), cartes en
+  apprentissage selon ce qui leur reste. Vitesse = temps réel entre deux réponses (pauses de plus de 3 min exclues),
+  moyenne tronquée des 60 dernières réponses du jour, tirée vers ses habitudes des 14 jours (`metrics.study_habits`,
+  calculé une fois par jour). Côté écran, l'heure est lissée (30 % par carte) et arrondie à 5 min (à la minute
+  sous 45 min). Rien n'est envoyé.
+
 - **Jeu « Arène »** (2026-10-08, Xyroob) : page web à part dans `jeu/`, **sans lien avec le plugin ni avec l'étude**
   (aucun besoin de changer `version.json`). Combat en arène façon LoL, 2 à 4 joueurs (bots pour compléter),
   monnaie fictive remise à zéro à chaque partie : casino (machine à sous, roulette) et boîtes surprises entre les manches,
@@ -148,6 +156,7 @@ v8 (CapyLinkMa) : frappe plus fluide (zone de message, point vert en pause penda
 v9 (Xyroob) : points plus équitables (journée sans les vieux retards, nouvelles à son rythme), fiche joueur dans Stats.
 v10 (Xyroob) : pomodoro en anneau, course en direct pendant les révisions, bouton de mise à jour dans la fenêtre.
 v11 (Xyroob) : course en direct sur le paquet qu'on fait (% et cartes restantes).
+v12 (Xyroob) : heure estimée de fin du paquet pendant les révisions.
 
 ## Reste à faire (choisi)
 Tout ce qui a été choisi est fait. Idées non choisies : 4, 10, 18, 30, et 31-33 (pont vers les casinos).

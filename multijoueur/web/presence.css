@@ -89,3 +89,13 @@
 .nightMode #mj-live .mj-note,.night-mode #mj-live .mj-note,body.night_mode #mj-live .mj-note{background:rgba(30,32,40,.9);color:#eceef3}
 .nightMode #mj-live .mj-pc,.night-mode #mj-live .mj-pc,body.night_mode #mj-live .mj-pc{color:#eceef3;text-shadow:0 0 3px #000}
 @media (prefers-reduced-motion:reduce){#mj-live .mj-pomo.mj-ping{animation:none}#mj-live .mj-runner{transition:none}}
+
+/* when the deck will be finished: tiny and faded, « fin du paquet » slides out on hover */
+#mj-live .mj-eta{display:none;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.8);
+  color:#1d1d1f;box-shadow:0 1px 5px rgba(0,0,0,.08);opacity:.55;pointer-events:auto;font-size:11px;transition:opacity .3s}
+#mj-live .mj-eta.on{display:flex}
+#mj-live .mj-eta:hover{opacity:1}
+#mj-live .mj-eta b{font-variant-numeric:tabular-nums;font-weight:600}
+#mj-live .mj-lab3{max-width:0;overflow:hidden;white-space:nowrap;font-weight:500;opacity:.7;transition:max-width .35s}
+#mj-live .mj-eta:hover .mj-lab3{max-width:120px}
+.nightMode #mj-live .mj-eta,.night-mode #mj-live .mj-eta,body.night_mode #mj-live .mj-eta{background:rgba(30,32,40,.8);color:#eceef3}

@@ -4,7 +4,9 @@
  * À gauche par défaut (les casinos sont à droite). Une bulle cliquable ouvre la fenêtre 👥
  * (pycmd « mjlive:… »). Le minuteur du pomodoro avance seul, chaque seconde : un anneau se referme
  * autour de 🍅 ; un clic le réduit à l'anneau seul. La course : une fine ligne, chacun à son % du
- * paquet qu'il fait en ce moment ; un mot discret seulement quand quelqu'un passe devant ou finit son paquet. */
+ * paquet qu'il fait en ce moment ; un mot discret seulement quand quelqu'un passe devant ou finit son paquet.
+ * mjEta({eta: {secs, new, rev, learn, answers, per_new, speed, deck} | null, corner}) : « 🏁 14 h 35 », l'heure
+ * où le paquet en cours sera fini ; lissée pour ne pas sauter à chaque carte (détails au survol). */
 (function(){
   if(window.mjLive)return;
   // writing an answer (any text box of the review screen): the dot's halo stops, so it never slows the typing
@@ -18,6 +20,7 @@
     var r=document.getElementById('mj-live');
     if(!r){r=document.createElement('div');r.id='mj-live';r.className='mj-haut-gauche';
       r.innerHTML='<div class="mj-pill"></div><div class="mj-race"><div class="mj-track"></div><div class="mj-note"></div></div>'+
+        '<div class="mj-eta"><span>🏁</span><b class="mj-at"></b><span class="mj-lab3">fin du paquet</span></div>'+
         '<div class="mj-pomo"><span class="mj-ring"><svg viewBox="0 0 32 32" aria-hidden="true"><circle class="mj-t" cx="16" cy="16" r="13"/>'+
         '<circle class="mj-arc" cx="16" cy="16" r="13" stroke-dasharray="'+RING+'" stroke-dashoffset="'+RING+'"/></svg><span class="mj-ico">🍅</span></span>'+
         '<b class="mj-time"></b><span class="mj-lab2"></span></div><div class="mj-msgs"></div>';document.body.appendChild(r);
@@ -107,6 +110,33 @@
     });
     leader=lead;
   }
+  // when will the deck be finished: smoothed, rounded, and only redrawn when it really moved
+  var eta={deck:null,smooth:null,shown:null};
+  function clock(ms){var t=new Date(ms),m=t.getMinutes();return t.getHours()+' h '+(m<10?'0':'')+m;}
+  function dur(s){var m=Math.round(s/60);return m<60?m+' min':Math.floor(m/60)+' h '+(m%60<10?'0':'')+(m%60);}
+  function plural(n,one,many){return n+' '+(n>1?many:one);}
+  window.mjEta=function(d){
+    var r=root(),box=r.querySelector('.mj-eta'),e=d&&d.eta;
+    if(d&&d.corner)r.className='mj-'+d.corner;
+    if(!e){box.classList.remove('on');eta.deck=null;return;}
+    var now=Date.now(),at=box.querySelector('.mj-at');
+    if(e.answers<=0||e.secs<=0){at.textContent='paquet fini';box.title='Plus rien à faire aujourd\'hui dans ce paquet 🎉';
+      box.classList.add('on');eta.deck=null;return;}
+    var target=now+e.secs*1000;
+    if(eta.deck!==e.deck||eta.smooth===null){eta.deck=e.deck;eta.smooth=target;eta.shown=null;}
+    else eta.smooth+=0.3*(target-eta.smooth);   // one fast or slow card only moves it a little
+    eta.smooth=Math.max(eta.smooth,now);
+    var left=(eta.smooth-now)/1000,step=(left>2700?5:1)*60000;
+    if(eta.shown===null||Math.abs(eta.smooth-eta.shown)>0.75*step)eta.shown=Math.round(eta.smooth/step)*step;
+    at.textContent=left<60?'presque fini':(left>2700?'vers ':'')+clock(eta.shown);
+    var parts=[];
+    if(e.rev)parts.push(plural(e.rev,'révision','révisions'));
+    if(e.new)parts.push(plural(e.new,'nouvelle','nouvelles')+' (~'+String(e.per_new).replace('.',',')+' passages chacune)');
+    if(e.learn)parts.push(plural(e.learn,'carte','cartes')+' en apprentissage');
+    box.title='Fin du paquet vers '+clock(eta.smooth)+' · encore ~'+dur(left)+'\n'+parts.join(', ')+
+      ' ≈ '+e.answers+' réponses à ~'+String(e.speed).replace('.',',')+' s chacune (ta vitesse en ce moment)';
+    box.classList.add('on');
+  };
   window.mjLive=function(d){
     var r=root(),live=d.live||[],p=r.querySelector('.mj-pill');
     r.className='mj-'+(d.corner||'haut-gauche');

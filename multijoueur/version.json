@@ -1,4 +1,4 @@
 {
-    "version": 11,
-    "nouveautes": "La course en direct se fait maintenant sur le paquet que chacun est en train de faire : où vous en êtes (%) et combien de cartes il vous reste."
+    "version": 12,
+    "nouveautes": "Pendant tes révisions, un petit « 🏁 14 h 35 » te dit vers quelle heure tu auras fini le paquet que tu fais, selon ta vitesse en ce moment (survole-le pour les détails)."
 }

@@ -201,6 +201,7 @@ def _pomo_tick():
 def _live_tick():
     if mw.col is None:
         return
+    _show_eta()   # a pause moves the finish time too
     get_api().live_check(_show_live)
 
 
@@ -220,6 +221,16 @@ def _show_live(out):
 
 
 @_safe
+def _show_eta():
+    """The small « fini vers 14 h 35 » of the deck I'm doing (local, never sent)."""
+    if not _in_review():
+        return
+    eta = get_api().my_eta()
+    corner = get_api().settings()["corner"]
+    mw.reviewer.web.eval("window.mjEta&&mjEta(%s);" % json.dumps({"eta": eta, "corner": corner}))
+
+
+@_safe
 def _apply_settings(settings):
     """Réglages changed in the window: re-dress the review screen at once."""
     if _in_review() and _last_live:
@@ -231,6 +242,7 @@ def _apply_settings(settings):
         if not settings["race"]:
             out["race"] = None
         mw.reviewer.web.eval("window.mjLive&&mjLive(%s);" % json.dumps(out, ensure_ascii=False))
+    _show_eta()
 
 
 def _on_webview_content(web_content, context):
@@ -279,6 +291,7 @@ def _on_profile_open():
 @_safe
 def _on_answer(*_args):
     now = time.time()
+    QTimer.singleShot(250, _show_eta)   # once Anki has counted the answer and picked the next card
     if now - _last["status"] > STATUS_EVERY:
         _last["status"] = now
         get_api().set_studying()
@@ -291,7 +304,7 @@ def _on_state_change(new_state, old_state):
     if new_state == "review" and old_state != "review":
         _last["status"] = time.time()
         get_api().set_studying()
-        QTimer.singleShot(1500, _live_tick)   # once the review page is ready
+        QTimer.singleShot(1500, _live_tick)   # once the review page is ready (also shows the finish time)
     if old_state == "review" and new_state in ("overview", "deckBrowser"):
         get_api().set_idle()
         _sync()
