@@ -65,29 +65,6 @@ class Metrics(unittest.TestCase):
         self.assertEqual(metrics.overdue_count(self.col), 3)
         self.assertEqual(metrics.due_parts(self.col)[0], 5)
 
-    def test_deck_eta(self):
-        h = metrics.study_habits(self.col)   # no history yet: the usual habits (3 passes per new card)
-        self.assertEqual((h["new"], h["s_learn"]), (3.0, 10.0))
-        eta = metrics.deck_eta(self.col, h)
-        self.assertEqual((eta["new"], eta["rev"], eta["learn"], eta["answers"]), (10, 0, 0, 30))
-        self.assertEqual(eta["secs"], 300)       # 30 answers x 10 s
-        # 4 answers today, 20 s apart: the speed leans toward 20 s, without jumping all the way
-        for _ in range(4):
-            q = self.col.sched.get_queued_cards()
-            card = self.col.get_card(q.cards[0].card.id)
-            card.start_timer()
-            self.col.sched.answer_card(self.col.sched.build_answer(card=card, states=q.cards[0].states, rating=CardAnswer.AGAIN))
-        ids = [r for r in self.col.db.list("select id from revlog order by id")]
-        for i, rid in enumerate(ids):
-            self.col.db.execute("update revlog set id = ? where id = ?", ids[0] + i * 20_000, rid)
-        eta = metrics.deck_eta(self.col, h)
-        self.assertEqual((eta["new"], eta["learn"]), (6, 4))
-        self.assertTrue(10 < eta["speed"] < 15, eta)
-        # 6 new x 3 + 4 learning cards seen once (2 left each) = 26 answers
-        self.assertEqual(eta["answers"], 26)
-        empty = metrics.deck_eta(self.col, dict(h, new=0.0))
-        self.assertGreater(empty["answers"], 0)
-
 
 if __name__ == "__main__":
     unittest.main()

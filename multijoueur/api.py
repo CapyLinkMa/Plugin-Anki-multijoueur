@@ -35,7 +35,6 @@ SETTINGS = {                 # this computer's choices (Profil → Réglages), k
     "pomo_pill": True,       # the pomodoro timer during reviews
     "sound": True,           # a short sound when the pomodoro changes phase
     "race": True,            # the live race during reviews (% of the deck being done), when a friend studies at the same time
-    "eta": True,             # during reviews: at what time I'll have finished the deck I'm doing
 }
 KEPT_ON_SIGN_IN = ("targets", "settings", "msg_seen", "feed_seen")
 AVATARS = ["🙂", "🦫", "🦊", "🐼", "🐸", "🦉", "🐙", "🦄", "🐯", "🐨", "🐧", "🦖", "🧠", "🫀", "🫁", "🧬", "🔬", "💊", "🩺", "📚"]
@@ -57,7 +56,6 @@ class MultiAPI:
         self.live_busy = False
         self.defaults = dict(SETTINGS)  # __init__.py may adjust them from config.json
         self._memo = (None, None)
-        self._habits = (None, None)     # (Anki day, metrics.study_habits): computed once a day
         self.update = None              # {"version", "nouveautes"} when GitHub has a newer version
         self.on_install_update = None   # set by __init__.py (needs Qt)
         self.on_check_update = None     # set by __init__.py: asks GitHub, then sets update_check and refreshes
@@ -326,19 +324,6 @@ class MultiAPI:
             return None
         try:
             return metrics.deck_progress(col)
-        except Exception:
-            return None
-
-    def my_eta(self):
-        """On the main thread, during reviews: how long the deck I'm doing still takes
-        (metrics.deck_eta), for the small « fini vers 14 h 35 ». Local only, never sent."""
-        col = self.col_getter()
-        if col is None or not self.settings()["eta"]:
-            return None
-        try:
-            if self._habits[0] != col.sched.today:
-                self._habits = (col.sched.today, metrics.study_habits(col))
-            return metrics.deck_eta(col, self._habits[1])
         except Exception:
             return None
 

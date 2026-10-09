@@ -620,7 +620,6 @@
       ${sw('bubbles', 'Bulles', 'messages, encouragements, nouveaux défis, paris et pomodoros (clique dessus pour ouvrir)')}
       ${sw('pomo_pill', 'Minuteur du pomodoro', 'le temps restant quand tu es dans un pomodoro')}
       ${sw('race', 'Course en direct', "quand un ami révise en même temps : où chacun en est dans le paquet qu'il fait (%), en tout petit (survole pour les détails)")}
-      ${sw('eta', 'Heure de fin du paquet', "« 🏁 14 h 35 » : quand tu auras fini le paquet que tu fais, selon ta vitesse en ce moment (survole pour les détails)")}
       ${sw('sound', 'Son du pomodoro', 'un petit bip quand vient la pause ou la reprise')}
       <div class="row"><label for="set-corner">Coin de l'écran</label><select id="set-corner">${(S.corners || []).map((c) => `<option value="${c}" ${st.corner === c ? 'selected' : ''}>${CORNER_NAME[c] || c}</option>`).join('')}</select></div>
       <div class="tiny muted">À gauche par défaut, pour ne pas cacher ton casino.</div></div>`;
